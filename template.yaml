@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless condominium management with JWT and DynamoDB
+
+Globals:
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'"
+
+Resources:
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Users
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Tabla para residentes
+  ResidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Residents
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Tabla para pagos
+  PaymentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Payments
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Tabla para anuncios
+  AnnouncementsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Announcements
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Tabla para solicitudes de mantenimiento
+  MaintenanceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Maintenance
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.9
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ResidentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PaymentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnnouncementsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MaintenanceTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:jwt-secret-key-*"
+      Events:
+        Register:
+          Type: Api
+          Properties:
+            Path: /auth/register
+            Method: post
+            RestApiId: !Ref ServerlessRestApi
+        Login:
+          Type: Api
+          Properties:
+            Path: /auth/login
+            Method: post
+            RestApiId: !Ref ServerlessRestApi
+        GetResidents:
+          Type: Api
+          Properties:
+            Path: /residents
+            Method: get
+            RestApiId: !Ref ServerlessRestApi
+        CreateResident:
+          Type: Api
+          Properties:
+            Path: /residents
+            Method: post
+            RestApiId: !Ref ServerlessRestApi
+        GetPayments:
+          Type: Api
+          Properties:
+            Path: /payments
+            Method: get
+            RestApiId: !Ref ServerlessRestApi
+        CreatePayment:
+          Type: Api
+          Properties:
+            Path: /payments
+            Method: post
+            RestApiId: !Ref ServerlessRestApi
+        GetAnnouncements:
+          Type: Api
+          Properties:
+            Path: /announcements
+            Method: get
+            RestApiId: !Ref ServerlessRestApi
+        CreateAnnouncement:
+          Type: Api
+          Properties:
+            Path: /announcements
+            Method: post
+            RestApiId: !Ref ServerlessRestApi
+        GetMaintenance:
+          Type: Api
+          Properties:
+            Path: /maintenance
+            Method: get
+            RestApiId: !Ref ServerlessRestApi
+        CreateMaintenance:
+          Type: Api
+          Properties:
+            Path: /maintenance
+            Method: post
+            RestApiId: !Ref ServerlessRestApi
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+  UsersTableName:
+    Description: DynamoDB table name
+    Value: !Ref UsersTable
