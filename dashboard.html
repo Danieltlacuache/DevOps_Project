@@ -21,49 +21,48 @@
         <section id="admin-section" style="display: none;">
             <div class="grid">
                 <div class="card">
-                    <h3>🏢 Registrar Nuevo Condominio</h3>
+                    <h3>🏢 Registrar Condominio</h3>
                     <form id="add-condo-form">
                         <input type="text" id="condo-nombre" placeholder="Nombre del Edificio" required>
-                        <input type="text" id="condo-direccion" placeholder="Dirección completa" required>
+                        <input type="text" id="condo-direccion" placeholder="Dirección" required>
                         <div class="file-upload">
-                            <label for="condo-file">Seleccionar Foto del Edificio</label>
+                            <label for="condo-file">Subir Foto a S3</label>
                             <input type="file" id="condo-file" accept="image/*" required>
                         </div>
                         <img id="preview" src="" alt="Previsualización" style="display:none; width:100%; border-radius:8px; margin-top:10px;">
-                        <button type="submit" class="btn-primary">Guardar en S3 y DynamoDB</button>
+                        <button type="submit" class="btn-primary">Crear Edificio</button>
                     </form>
                 </div>
 
                 <div class="card">
-                    <h3>👤 Vincular Residente a Edificio</h3>
+                    <h3>👤 Vincular Residente</h3>
                     <form id="add-resident-form">
-                        <input type="text" id="res-name" placeholder="Nombre Completo" required>
-                        <input type="email" id="res-email" placeholder="Correo del Residente" required>
-                        <input type="text" id="res-apt" placeholder="Número de Departamento" required>
+                        <input type="text" id="res-name" placeholder="Nombre del Residente" required>
+                        <input type="email" id="res-email" placeholder="Correo Electrónico" required>
+                        <input type="text" id="res-apt" placeholder="Departamento" required>
                         <input type="text" id="res-condo-id" placeholder="Pegar ID del Condominio" required>
-                        <button type="submit" class="btn-secondary">Vincular al Edificio</button>
+                        <button type="submit" class="btn-secondary">Vincular</button>
                     </form>
                 </div>
             </div>
 
             <div class="card" style="margin-top: 20px;">
-                <h3>Mis Condominios Registrados</h3>
+                <h3>Mis Edificios (Gestión de Estados)</h3>
                 <div id="condos-list-admin" class="condos-grid"></div>
             </div>
 
             <div class="card" style="margin-top: 20px;">
-                <h3>Gestión de Residentes</h3>
+                <h3>Lista de Residentes</h3>
                 <table class="styled-table">
                     <thead>
                         <tr>
                             <th>Nombre</th>
                             <th>Depto</th>
                             <th>Email</th>
-                            <th>Acciones</th>
+                            <th>Condominio Asignado</th> <th>Acciones</th>
                         </tr>
                     </thead>
-                    <tbody id="residents-list">
-                        </tbody>
+                    <tbody id="residents-list"></tbody>
                 </table>
             </div>
         </section>
