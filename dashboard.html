@@ -3,267 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Condominios</title>
+    <title>CondoManager Pro - Dashboard</title>
     <link rel="stylesheet" href="styles.css">
-    <style>
-        .dashboard-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid #ddd;
-        }
-        .nav-menu {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        .nav-btn {
-            padding: 0.5rem 1rem;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-        }
-        .nav-btn:hover {
-            background-color: #0056b3;
-        }
-        .nav-btn.active {
-            background-color: #0056b3;
-        }
-        .section {
-            display: none;
-        }
-        .section.active {
-            display: block;
-        }
-        .card {
-            background-color: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            margin-bottom: 1rem;
-        }
-        .card h3 {
-            margin-top: 0;
-            color: #333;
-        }
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
-        .form-grid .form-group {
-            margin-bottom: 0;
-        }
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1rem;
-        }
-        .table th, .table td {
-            padding: 0.75rem;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-        .table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-        }
-        .btn-small {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.875rem;
-        }
-        .logout-btn {
-            background-color: #dc3545;
-        }
-        .logout-btn:hover {
-            background-color: #c82333;
-        }
-    </style>
 </head>
 <body>
-    <div class="dashboard-container">
-        <header class="header">
-            <h1>Sistema de Gestión de Condominios</h1>
-            <button class="btn logout-btn" onclick="logout()">Cerrar Sesión</button>
-        </header>
+    <header>
+        <div class="nav-container">
+            <h2 class="logo">CondoManager<span>Pro</span></h2>
+            <div class="user-info">
+                <span id="user-email">cargando...</span>
+                <button onclick="logout()" class="btn-logout">Cerrar Sesión</button>
+            </div>
+        </div>
+    </header>
 
-        <nav class="nav-menu">
-            <button class="nav-btn active" onclick="showSection('residents')">Residentes</button>
-            <button class="nav-btn" onclick="showSection('payments')">Pagos</button>
-            <button class="nav-btn" onclick="showSection('announcements')">Anuncios</button>
-            <button class="nav-btn" onclick="showSection('maintenance')">Mantenimiento</button>
-        </nav>
+    <main class="container">
+        <section id="admin-section" style="display: none;">
+            <div class="grid">
+                <div class="card">
+                    <h3>🏢 Registrar Nuevo Condominio</h3>
+                    <form id="add-condo-form">
+                        <input type="text" id="condo-nombre" placeholder="Nombre del Edificio" required>
+                        <input type="text" id="condo-direccion" placeholder="Dirección completa" required>
+                        <div class="file-upload">
+                            <label for="condo-file">Seleccionar Foto del Edificio</label>
+                            <input type="file" id="condo-file" accept="image/*" required>
+                        </div>
+                        <img id="preview" src="" alt="Previsualización" style="display:none; width:100%; border-radius:8px; margin-top:10px;">
+                        <button type="submit" class="btn-primary">Guardar en S3 y DynamoDB</button>
+                    </form>
+                </div>
 
-        <section id="residents" class="section active">
-            <div class="card">
+                <div class="card">
+                    <h3>👤 Vincular Residente a Edificio</h3>
+                    <form id="add-resident-form">
+                        <input type="text" id="res-name" placeholder="Nombre Completo" required>
+                        <input type="email" id="res-email" placeholder="Correo del Residente" required>
+                        <input type="text" id="res-apt" placeholder="Número de Departamento" required>
+                        <input type="text" id="res-condo-id" placeholder="Pegar ID del Condominio" required>
+                        <button type="submit" class="btn-secondary">Vincular al Edificio</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 20px;">
+                <h3>Mis Condominios Registrados</h3>
+                <div id="condos-list-admin" class="condos-grid"></div>
+            </div>
+
+            <div class="card" style="margin-top: 20px;">
                 <h3>Gestión de Residentes</h3>
-                <form id="resident-form">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="resident-name">Nombre:</label>
-                            <input type="text" id="resident-name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="resident-apartment">Apartamento:</label>
-                            <input type="text" id="resident-apartment" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="resident-email">Email:</label>
-                            <input type="email" id="resident-email" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="resident-phone">Teléfono:</label>
-                            <input type="tel" id="resident-phone">
-                        </div>
-                    </div>
-                    <button type="submit" class="btn">Agregar Residente</button>
-                </form>
-                <table class="table" id="residents-table">
+                <table class="styled-table">
                     <thead>
                         <tr>
                             <th>Nombre</th>
-                            <th>Apartamento</th>
+                            <th>Depto</th>
                             <th>Email</th>
-                            <th>Teléfono</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <!-- Residentes se cargarán aquí -->
-                    </tbody>
+                    <tbody id="residents-list">
+                        </tbody>
                 </table>
             </div>
         </section>
 
-        <section id="payments" class="section">
-            <div class="card">
-                <h3>Gestión de Pagos</h3>
-                <form id="payment-form">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="payment-resident">Residente:</label>
-                            <select id="payment-resident" required>
-                                <option value="">Seleccionar Residente</option>
-                                <!-- Opciones se cargarán dinámicamente -->
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="payment-amount">Monto:</label>
-                            <input type="number" id="payment-amount" step="0.01" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="payment-date">Fecha:</label>
-                            <input type="date" id="payment-date" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="payment-description">Descripción:</label>
-                            <input type="text" id="payment-description" required>
-                        </div>
-                    </div>
-                    <button type="submit" class="btn">Registrar Pago</button>
-                </form>
-                <table class="table" id="payments-table">
-                    <thead>
-                        <tr>
-                            <th>Residente</th>
-                            <th>Monto</th>
-                            <th>Fecha</th>
-                            <th>Descripción</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Pagos se cargarán aquí -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <section id="announcements" class="section">
-            <div class="card">
-                <h3>Anuncios del Condominio</h3>
-                <form id="announcement-form">
-                    <div class="form-group">
-                        <label for="announcement-title">Título:</label>
-                        <input type="text" id="announcement-title" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="announcement-content">Contenido:</label>
-                        <textarea id="announcement-content" rows="4" required></textarea>
-                    </div>
-                    <button type="submit" class="btn">Publicar Anuncio</button>
-                </form>
-                <div id="announcements-list">
-                    <!-- Anuncios se cargarán aquí -->
+        <section id="residente-section" style="display: none;">
+            <div id="mi-condominio-visual" class="residente-dashboard">
                 </div>
-            </div>
         </section>
-
-        <section id="maintenance" class="section">
-            <div class="card">
-                <h3>Solicitudes de Mantenimiento</h3>
-                <form id="maintenance-form">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="maintenance-resident">Residente:</label>
-                            <select id="maintenance-resident" required>
-                                <option value="">Seleccionar Residente</option>
-                                <!-- Opciones se cargarán dinámicamente -->
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="maintenance-type">Tipo:</label>
-                            <select id="maintenance-type" required>
-                                <option value="">Seleccionar Tipo</option>
-                                <option value="eléctrica">Eléctrica</option>
-                                <option value="plomeria">Plomería</option>
-                                <option value="pintura">Pintura</option>
-                                <option value="otros">Otros</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="maintenance-description">Descripción:</label>
-                            <textarea id="maintenance-description" rows="3" required></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label for="maintenance-priority">Prioridad:</label>
-                            <select id="maintenance-priority" required>
-                                <option value="baja">Baja</option>
-                                <option value="media">Media</option>
-                                <option value="alta">Alta</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button type="submit" class="btn">Enviar Solicitud</button>
-                </form>
-                <table class="table" id="maintenance-table">
-                    <thead>
-                        <tr>
-                            <th>Residente</th>
-                            <th>Tipo</th>
-                            <th>Descripción</th>
-                            <th>Prioridad</th>
-                            <th>Estado</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Solicitudes se cargarán aquí -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
-    </div>
+    </main>
 
     <script src="dashboard.js"></script>
 </body>

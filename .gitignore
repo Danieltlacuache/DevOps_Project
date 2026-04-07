@@ -1,0 +1,5 @@
+.aws-sam/
+*.zip
+*.md
+*.log
+*.env

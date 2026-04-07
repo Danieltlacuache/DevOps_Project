@@ -1,5 +1,5 @@
 // Reemplaza con la URL de tu API Gateway después del despliegue
-const API_BASE_URL = 'https://4t7zobb7o6.execute-api.us-east-2.amazonaws.com';
+const API_BASE_URL = 'https://7y2exkoxi2.execute-api.us-east-2.amazonaws.com/Prod';
 
 function showMessage(message, type) {
     const messageDiv = document.getElementById('message');

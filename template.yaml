@@ -1,8 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Serverless condominium management with JWT and DynamoDB
+Description: >
+  Condominium Management System - Arquitectura Escalable con S3 para Fotos.
 
 Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.10
+    MemorySize: 512
+    Environment:
+      Variables:
+        JWT_SECRET_NAME: "jwt-secret-key"
+        PHOTOS_BUCKET: !Ref CondoPhotosBucket
+        USERS_TABLE: !Ref UsersTable
+        RESIDENTS_TABLE: !Ref ResidentsTable
+        PAYMENTS_TABLE: !Ref PaymentsTable
+        ANNOUNCEMENTS_TABLE: !Ref AnnouncementsTable
+        MAINTENANCE_TABLE: !Ref MaintenanceTable
+        CONDOS_TABLE: !Ref CondosTable
   Api:
     Cors:
       AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
@@ -10,158 +25,147 @@ Globals:
       AllowOrigin: "'*'"
 
 Resources:
+  # --- CAPA DE DATOS (DynamoDB) ---
+  
   UsersTable:
-    Type: AWS::DynamoDB::Table
+    Type: AWS::Serverless::SimpleTable
     Properties:
+      PrimaryKey: { Name: email, Type: String }
       TableName: Users
-      AttributeDefinitions:
-        - AttributeName: email
-          AttributeType: S
-      KeySchema:
-        - AttributeName: email
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
 
-  # Tabla para residentes
   ResidentsTable:
-    Type: AWS::DynamoDB::Table
+    Type: AWS::Serverless::SimpleTable
     Properties:
+      PrimaryKey: { Name: id, Type: String }
       TableName: Residents
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
 
-  # Tabla para pagos
   PaymentsTable:
-    Type: AWS::DynamoDB::Table
+    Type: AWS::Serverless::SimpleTable
     Properties:
+      PrimaryKey: { Name: id, Type: String }
       TableName: Payments
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
 
-  # Tabla para anuncios
   AnnouncementsTable:
-    Type: AWS::DynamoDB::Table
+    Type: AWS::Serverless::SimpleTable
     Properties:
+      PrimaryKey: { Name: id, Type: String }
       TableName: Announcements
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
 
-  # Tabla para solicitudes de mantenimiento
   MaintenanceTable:
-    Type: AWS::DynamoDB::Table
+    Type: AWS::Serverless::SimpleTable
     Properties:
+      PrimaryKey: { Name: id, Type: String }
       TableName: Maintenance
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+  
+  CondosTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: Condominios
+      PrimaryKey: { Name: id, Type: String }
 
-  AuthFunction:
+  # --- ALMACENAMIENTO DE ARCHIVOS (S3) ---
+
+  CondoPhotosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "condo-manager-photos-${AWS::AccountId}"
+      # Configuración de CORS para que el navegador permita ver las fotos
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CondoPhotosBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 's3:GetObject'
+            Resource: !Sub 'arn:aws:s3:::${CondoPhotosBucket}/*'
+            Principal: '*'
+
+  # --- CAPA DE APLICACIÓN ---
+
+  CondoManagerFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: .
       Handler: lambda_function.lambda_handler
-      Runtime: python3.9
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ResidentsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref PaymentsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AnnouncementsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref MaintenanceTable
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResidentsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref PaymentsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref AnnouncementsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref MaintenanceTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref CondosTable }
+        - S3CrudPolicy:
+            BucketName: !Ref CondoPhotosBucket
         - Statement:
             - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
+              Action: 'secretsmanager:GetSecretValue'
               Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:jwt-secret-key-*"
       Events:
-        Register:
+        # Autenticación
+        RegisterUser:
           Type: Api
-          Properties:
-            Path: /auth/register
-            Method: post
-            RestApiId: !Ref ServerlessRestApi
-        Login:
+          Properties: { Path: /auth/register, Method: post }
+        LoginUser:
           Type: Api
-          Properties:
-            Path: /auth/login
-            Method: post
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /auth/login, Method: post }
+
+        # Residentes (Incluyendo el método DELETE para eliminar)
         GetResidents:
           Type: Api
-          Properties:
-            Path: /residents
-            Method: get
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /residents, Method: get }
         CreateResident:
           Type: Api
-          Properties:
-            Path: /residents
-            Method: post
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /residents, Method: post }
+        DeleteResident:
+          Type: Api
+          Properties: { Path: /residents, Method: delete }
+
+        # Condominios
+        GetCondos:
+          Type: Api
+          Properties: { Path: /condos, Method: get }
+        CreateCondo:
+          Type: Api
+          Properties: { Path: /condos, Method: post }
+
+        # Otros servicios
         GetPayments:
           Type: Api
-          Properties:
-            Path: /payments
-            Method: get
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /payments, Method: get }
         CreatePayment:
           Type: Api
-          Properties:
-            Path: /payments
-            Method: post
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /payments, Method: post }
         GetAnnouncements:
           Type: Api
-          Properties:
-            Path: /announcements
-            Method: get
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /announcements, Method: get }
         CreateAnnouncement:
           Type: Api
-          Properties:
-            Path: /announcements
-            Method: post
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /announcements, Method: post }
         GetMaintenance:
           Type: Api
-          Properties:
-            Path: /maintenance
-            Method: get
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /maintenance, Method: get }
         CreateMaintenance:
           Type: Api
-          Properties:
-            Path: /maintenance
-            Method: post
-            RestApiId: !Ref ServerlessRestApi
+          Properties: { Path: /maintenance, Method: post }
 
 Outputs:
   ApiUrl:
-    Description: API Gateway endpoint URL
+    Description: "URL de la API Gateway"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
-  UsersTableName:
-    Description: DynamoDB table name
-    Value: !Ref UsersTable
+  BucketName:
+    Description: "Nombre del Bucket de S3"
+    Value: !Ref CondoPhotosBucket

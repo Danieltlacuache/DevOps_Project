@@ -1,344 +1,200 @@
-// Reemplaza con la URL de tu API Gateway después del despliegue
-const API_BASE_URL = 'https://4t7zobb7o6.execute-api.us-east-2.amazonaws.com';
+// --- CONFIGURACIÓN DE CONEXIÓN ---
+const API_BASE_URL = 'https://7y2exkoxi2.execute-api.us-east-2.amazonaws.com/Prod'; 
+const token = localStorage.getItem('token');
 
-function showMessage(message, type) {
-    // Similar a script.js
-    const messageDiv = document.getElementById('message');
-    if (!messageDiv) {
-        const newMessageDiv = document.createElement('div');
-        newMessageDiv.id = 'message';
-        newMessageDiv.className = 'message';
-        document.querySelector('.dashboard-container').appendChild(newMessageDiv);
+if (!token) { 
+    window.location.href = 'index.html'; 
+}
+
+function parseJwt(token) {
+    try {
+        return JSON.parse(atob(token.split('.')[1]));
+    } catch (e) { 
+        console.error("Token inválido");
+        return null; 
     }
-    const msgDiv = document.getElementById('message');
-    msgDiv.textContent = message;
-    msgDiv.className = 'message ' + type;
-    setTimeout(() => {
-        msgDiv.textContent = '';
-        msgDiv.className = 'message';
-    }, 5000);
+}
+
+const userData = parseJwt(token);
+
+// --- INICIALIZACIÓN ---
+document.addEventListener('DOMContentLoaded', () => {
+    if (!userData) { logout(); return; }
+    
+    const emailElem = document.getElementById('user-email');
+    if (emailElem) emailElem.textContent = userData.email;
+
+    if (userData.role === 'admin') {
+        const adminSec = document.getElementById('admin-section');
+        if (adminSec) {
+            adminSec.style.display = 'block';
+            loadAdminCondos();    
+            loadAdminResidents(); 
+        }
+    } else {
+        const resSec = document.getElementById('residente-section');
+        if (resSec) {
+            resSec.style.display = 'block';
+            loadResidenteDashboard(); 
+        }
+    }
+});
+
+// --- LÓGICA ADMINISTRADOR ---
+
+// Previsualización de Imagen
+const condoFileInput = document.getElementById('condo-file');
+if (condoFileInput) {
+    condoFileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file && file.size > 5 * 1024 * 1024) {
+            alert("La imagen es muy pesada (Máx 5MB).");
+            this.value = "";
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function() {
+            const preview = document.getElementById('preview');
+            if (preview) {
+                preview.src = reader.result;
+                preview.style.display = 'block';
+            }
+        }
+        if (file) reader.readAsDataURL(file);
+    });
+}
+
+// Crear Condominio
+const condoForm = document.getElementById('add-condo-form');
+if (condoForm) {
+    condoForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const file = document.getElementById('condo-file').files[0];
+        if (!file) return alert("Selecciona una foto");
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const payload = {
+                nombre: document.getElementById('condo-nombre').value,
+                direccion: document.getElementById('condo-direccion').value,
+                image_data: reader.result 
+            };
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/condos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    alert("¡Condominio creado!");
+                    location.reload(); // Recarga para limpiar y actualizar todo
+                }
+            } catch (err) { alert("Error al conectar"); }
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function loadAdminCondos() {
+    const container = document.getElementById('condos-list-admin');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API_BASE_URL}/condos`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const condos = await res.json();
+        container.innerHTML = condos.map(c => `
+            <div class="admin-box" style="border: 1px solid #ddd; padding: 10px; border-radius: 8px; background: #fff; text-align: center;">
+                <img src="${c.foto_url}" style="width:100%; height:80px; object-fit:cover; border-radius:4px;">
+                <h4 style="margin:5px 0; font-size:0.9rem;">${c.nombre}</h4>
+                <p style="font-size:0.6rem; color: #888;">ID: ${c.id}</p>
+                <button class="btn btn-sm" onclick="copyToClipboard('${c.id}')">Copiar ID</button>
+            </div>
+        `).join('');
+    } catch (e) { console.error(e); }
+}
+
+const resForm = document.getElementById('add-resident-form');
+if (resForm) {
+    resForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const payload = {
+            name: document.getElementById('res-name').value,
+            email: document.getElementById('res-email').value,
+            apartment: document.getElementById('res-apt').value,
+            condo_id: document.getElementById('res-condo-id').value
+        };
+        const res = await fetch(`${API_BASE_URL}/residents`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            alert("Residente vinculado.");
+            resForm.reset();
+            loadAdminResidents();
+        }
+    });
+}
+
+async function loadAdminResidents() {
+    const list = document.getElementById('residents-list');
+    if (!list) return;
+    try {
+        const res = await fetch(`${API_BASE_URL}/residents`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        list.innerHTML = data.map(r => `
+            <tr>
+                <td>${r.name}</td>
+                <td>${r.apartment}</td>
+                <td>${r.email}</td>
+                <td><button class="btn-delete" onclick="deleteResident('${r.id}')">Eliminar</button></td>
+            </tr>
+        `).join('');
+    } catch (e) { console.error(e); }
+}
+
+// --- LÓGICA RESIDENTE ---
+async function loadResidenteDashboard() {
+    const visual = document.getElementById('mi-condominio-visual');
+    if (!visual) return;
+    try {
+        const res = await fetch(`${API_BASE_URL}/condos`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const condos = await res.json();
+        if (condos.length > 0) {
+            const c = condos[0];
+            visual.innerHTML = `
+                <img src="${c.foto_url}" style="width:100%; border-radius:12px; margin-bottom:20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                <h1 style="color:var(--primary-color);">Tu Hogar en ${c.nombre}</h1>
+                <p>📍 <b>Dirección:</b> ${c.direccion}</p>
+            `;
+        } else {
+            visual.innerHTML = "<h3>⚠️ Sin Edificio Asignado</h3>";
+        }
+    } catch (e) { console.error(e); }
+}
+
+// --- FUNCIONES DE UTILIDAD (CORREGIDAS) ---
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => alert("ID Copiado"));
 }
 
 function logout() {
-    localStorage.removeItem('token');
+    localStorage.clear();
     window.location.href = 'index.html';
 }
 
-function showSection(sectionId) {
-    // Ocultar todas las secciones
-    const sections = document.querySelectorAll('.section');
-    sections.forEach(section => section.classList.remove('active'));
-
-    // Mostrar la sección seleccionada
-    document.getElementById(sectionId).classList.add('active');
-
-    // Actualizar botones de navegación
-    const navBtns = document.querySelectorAll('.nav-btn');
-    navBtns.forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-}
-
-// Gestión de Residentes
-document.getElementById('resident-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = document.getElementById('resident-name').value;
-    const apartment = document.getElementById('resident-apartment').value;
-    const email = document.getElementById('resident-email').value;
-    const phone = document.getElementById('resident-phone').value;
-
+// CORRECCIÓN: Usar Query Parameter para el DELETE
+async function deleteResident(id) {
+    if (!confirm("¿Eliminar residente?")) return;
     try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_BASE_URL + '/residents', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ name, apartment, email, phone }),
+        const res = await fetch(`${API_BASE_URL}/residents?id=${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (response.ok) {
-            showMessage('Residente agregado exitosamente', 'success');
-            loadResidents();
-            e.target.reset();
-        } else {
-            showMessage('Error al agregar residente', 'error');
+        if (res.ok) {
+            alert("Eliminado.");
+            loadAdminResidents();
         }
-    } catch (error) {
-        showMessage('Error de conexión', 'error');
-    }
-});
-
-async function loadResidents() {
-    try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_BASE_URL + '/residents', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        if (response.ok) {
-            const residents = await response.json();
-            const tbody = document.querySelector('#residents-table tbody');
-            tbody.innerHTML = '';
-
-            residents.forEach(resident => {
-                const row = `
-                    <tr>
-                        <td>${resident.name}</td>
-                        <td>${resident.apartment}</td>
-                        <td>${resident.email}</td>
-                        <td>${resident.phone || ''}</td>
-                        <td>
-                            <button class="btn btn-small" onclick="editResident('${resident.id}')">Editar</button>
-                            <button class="btn btn-small logout-btn" onclick="deleteResident('${resident.id}')">Eliminar</button>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
-            });
-        }
-    } catch (error) {
-        console.error('Error loading residents:', error);
-    }
+    } catch (e) { console.error("Error al borrar:", e); }
 }
-
-// Gestión de Pagos
-document.getElementById('payment-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const residentId = document.getElementById('payment-resident').value;
-    const amount = document.getElementById('payment-amount').value;
-    const date = document.getElementById('payment-date').value;
-    const description = document.getElementById('payment-description').value;
-
-    try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_BASE_URL + '/payments', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ residentId, amount, date, description }),
-        });
-
-        if (response.ok) {
-            showMessage('Pago registrado exitosamente', 'success');
-            loadPayments();
-            e.target.reset();
-        } else {
-            showMessage('Error al registrar pago', 'error');
-        }
-    } catch (error) {
-        showMessage('Error de conexión', 'error');
-    }
-});
-
-async function loadPayments() {
-    try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_BASE_URL + '/payments', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        if (response.ok) {
-            const payments = await response.json();
-            const tbody = document.querySelector('#payments-table tbody');
-            tbody.innerHTML = '';
-
-            payments.forEach(payment => {
-                const row = `
-                    <tr>
-                        <td>${payment.residentName}</td>
-                        <td>$${payment.amount}</td>
-                        <td>${payment.date}</td>
-                        <td>${payment.description}</td>
-                        <td>
-                            <button class="btn btn-small logout-btn" onclick="deletePayment('${payment.id}')">Eliminar</button>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
-            });
-        }
-    } catch (error) {
-        console.error('Error loading payments:', error);
-    }
-}
-
-// Gestión de Anuncios
-document.getElementById('announcement-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const title = document.getElementById('announcement-title').value;
-    const content = document.getElementById('announcement-content').value;
-
-    try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_BASE_URL + '/announcements', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ title, content }),
-        });
-
-        if (response.ok) {
-            showMessage('Anuncio publicado exitosamente', 'success');
-            loadAnnouncements();
-            e.target.reset();
-        } else {
-            showMessage('Error al publicar anuncio', 'error');
-        }
-    } catch (error) {
-        showMessage('Error de conexión', 'error');
-    }
-});
-
-async function loadAnnouncements() {
-    try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_BASE_URL + '/announcements', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        if (response.ok) {
-            const announcements = await response.json();
-            const list = document.getElementById('announcements-list');
-            list.innerHTML = '';
-
-            announcements.forEach(announcement => {
-                const card = `
-                    <div class="card">
-                        <h4>${announcement.title}</h4>
-                        <p>${announcement.content}</p>
-                        <small>Publicado el ${announcement.date}</small>
-                        <button class="btn btn-small logout-btn" onclick="deleteAnnouncement('${announcement.id}')">Eliminar</button>
-                    </div>
-                `;
-                list.innerHTML += card;
-            });
-        }
-    } catch (error) {
-        console.error('Error loading announcements:', error);
-    }
-}
-
-// Gestión de Mantenimiento
-document.getElementById('maintenance-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const residentId = document.getElementById('maintenance-resident').value;
-    const type = document.getElementById('maintenance-type').value;
-    const description = document.getElementById('maintenance-description').value;
-    const priority = document.getElementById('maintenance-priority').value;
-
-    try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_BASE_URL + '/maintenance', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ residentId, type, description, priority }),
-        });
-
-        if (response.ok) {
-            showMessage('Solicitud de mantenimiento enviada exitosamente', 'success');
-            loadMaintenanceRequests();
-            e.target.reset();
-        } else {
-            showMessage('Error al enviar solicitud', 'error');
-        }
-    } catch (error) {
-        showMessage('Error de conexión', 'error');
-    }
-});
-
-async function loadMaintenanceRequests() {
-    try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_BASE_URL + '/maintenance', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-
-        if (response.ok) {
-            const requests = await response.json();
-            const tbody = document.querySelector('#maintenance-table tbody');
-            tbody.innerHTML = '';
-
-            requests.forEach(request => {
-                const row = `
-                    <tr>
-                        <td>${request.residentName}</td>
-                        <td>${request.type}</td>
-                        <td>${request.description}</td>
-                        <td>${request.priority}</td>
-                        <td>${request.status}</td>
-                        <td>
-                            <button class="btn btn-small" onclick="updateMaintenanceStatus('${request.id}', 'completado')">Completar</button>
-                            <button class="btn btn-small logout-btn" onclick="deleteMaintenance('${request.id}')">Eliminar</button>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
-            });
-        }
-    } catch (error) {
-        console.error('Error loading maintenance requests:', error);
-    }
-}
-
-// Funciones auxiliares para editar/eliminar (placeholders)
-function editResident(id) {
-    showMessage('Función de edición no implementada aún', 'error');
-}
-
-function deleteResident(id) {
-    if (confirm('¿Estás seguro de eliminar este residente?')) {
-        // Implementar eliminación
-        showMessage('Función de eliminación no implementada aún', 'error');
-    }
-}
-
-function deletePayment(id) {
-    if (confirm('¿Estás seguro de eliminar este pago?')) {
-        showMessage('Función de eliminación no implementada aún', 'error');
-    }
-}
-
-function deleteAnnouncement(id) {
-    if (confirm('¿Estás seguro de eliminar este anuncio?')) {
-        showMessage('Función de eliminación no implementada aún', 'error');
-    }
-}
-
-function deleteMaintenance(id) {
-    if (confirm('¿Estás seguro de eliminar esta solicitud?')) {
-        showMessage('Función de eliminación no implementada aún', 'error');
-    }
-}
-
-function updateMaintenanceStatus(id, status) {
-    showMessage('Función de actualización no implementada aún', 'error');
-}
-
-// Cargar datos iniciales
-document.addEventListener('DOMContentLoaded', () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        window.location.href = 'index.html';
-    } else {
-        loadResidents();
-        loadPayments();
-        loadAnnouncements();
-        loadMaintenanceRequests();
-    }
-});

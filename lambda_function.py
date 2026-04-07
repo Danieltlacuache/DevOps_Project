@@ -4,49 +4,53 @@ import hashlib
 import jwt
 import datetime
 import uuid
+import re
+import os
+import base64
 from botocore.exceptions import ClientError
 from decimal import Decimal
+from boto3.dynamodb.conditions import Attr
 
-# --- INICIALIZACIÓN (Fuera del handler para reutilizar conexiones) ---
+# --- INICIALIZACIÓN DE RECURSOS ---
 dynamodb = boto3.resource('dynamodb')
-users_table = dynamodb.Table('Users')
-residents_table = dynamodb.Table('Residents')
-payments_table = dynamodb.Table('Payments')
-announcements_table = dynamodb.Table('Announcements')
-maintenance_table = dynamodb.Table('Maintenance')
+s3 = boto3.client('s3')
+
+# Variables de entorno (Sincronizadas con template.yaml)
+users_table = dynamodb.Table(os.environ.get('USERS_TABLE', 'Users'))
+residents_table = dynamodb.Table(os.environ.get('RESIDENTS_TABLE', 'Residents'))
+payments_table = dynamodb.Table(os.environ.get('PAYMENTS_TABLE', 'Payments'))
+announcements_table = dynamodb.Table(os.environ.get('ANNOUNCEMENTS_TABLE', 'Announcements'))
+maintenance_table = dynamodb.Table(os.environ.get('MAINTENANCE_TABLE', 'Maintenance'))
+condos_table = dynamodb.Table(os.environ.get('CONDOS_TABLE', 'Condominios'))
+
+BUCKET_NAME = os.environ.get('PHOTOS_BUCKET')
 
 secrets_client = boto3.client('secretsmanager')
-JWT_SECRET_NAME = 'jwt-secret-key'
-
-# Variable global para cachear el secreto y ahorrar costos de lectura
-cached_jwt_secret = None
+JWT_SECRET_NAME = os.environ.get('JWT_SECRET_NAME', 'jwt-secret-key')
 
 def get_jwt_secret():
-    """Obtiene la clave JWT de Secrets Manager y la guarda en caché"""
-    global cached_jwt_secret
-    if cached_jwt_secret:
-        return cached_jwt_secret
-    
     try:
         response = secrets_client.get_secret_value(SecretId=JWT_SECRET_NAME)
         secret_dict = json.loads(response['SecretString'])
-        # Buscamos la llave 'JWT_SECRET' dentro del JSON guardado en AWS
-        cached_jwt_secret = secret_dict.get('JWT_SECRET', 'fallback_secret_desarrollo')
-        return cached_jwt_secret
-    except Exception as e:
-        print(f"Error crítico obteniendo secreto: {e}")
+        return secret_dict.get('JWT_SECRET', 'fallback_secret_desarrollo')
+    except:
         return 'fallback_secret_desarrollo'
 
-def lambda_handler(event, context):
-    http_method = event.get('requestContext', {}).get('http', {}).get('method')
-    path = event.get('rawPath', '')
+def get_admin_master_key():
+    return "ITESO_2026_ADMIN"
 
-    print(f"Request: {http_method} {path}")
+def is_valid_email(email):
+    regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(regex, email) is not None
+
+def lambda_handler(event, context):
+    http_method = event.get('httpMethod')
+    path = event.get('path')
 
     if http_method == 'OPTIONS':
         return response(200, {'message': 'CORS OK'})
 
-    # Enrutamiento mejorado
+    # DICCIONARIO DE RUTAS (Incluye DELETE para residentes)
     routes = {
         'POST': {
             '/auth/register': register,
@@ -54,137 +58,231 @@ def lambda_handler(event, context):
             '/residents': create_resident,
             '/payments': create_payment,
             '/announcements': create_announcement,
-            '/maintenance': create_maintenance
+            '/maintenance': create_maintenance,
+            '/condos': create_condo 
         },
         'GET': {
-            '/auth/users': lambda e: response(200, users_table.scan().get('Items', [])), # <--- AÑADE ESTA LÍNEA
             '/residents': get_residents,
             '/payments': get_payments,
             '/announcements': get_announcements,
-            '/maintenance': get_maintenance
+            '/maintenance': get_maintenance,
+            '/condos': get_condos 
+        },
+        'DELETE': {
+            '/residents': delete_resident # <--- Nueva ruta para eliminar
         }
     }
 
     handler_func = routes.get(http_method, {}).get(path)
-    
     if handler_func:
         return handler_func(event)
     
     return response(404, {'message': f'Ruta no encontrada: {path}'})
 
-# -------- LÓGICA DE NEGOCIO --------
+# -------- LÓGICA DE CONDOMINIOS --------
 
-def register(event):
-    try:
-        body = get_body(event)
-        email, password = body.get('email'), body.get('password')
+def create_condo(event):
+    payload = verify_token(get_token_from_header(event))
+    if not payload or payload.get('role') != 'admin':
+        return response(403, {'message': 'Solo administradores'})
 
-        if not email or not password:
-            return response(400, {'message': 'Email y password obligatorios'})
-
-        # Hash con salt básico (puedes mejorar esto con bcrypt en una Layer)
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
-        
-        users_table.put_item(
-            Item={'email': email, 'password': hashed_password},
-            ConditionExpression='attribute_not_exists(email)' # Evita duplicados
-        )
-        return response(201, {'message': 'Usuario registrado'})
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-            return response(400, {'message': 'El usuario ya existe'})
-        return response(500, {'message': str(e)})
-
-def login(event):
     body = get_body(event)
-    email, password = body.get('email'), body.get('password')
-    
-    res = users_table.get_item(Key={'email': email})
-    user = res.get('item') # Corregido: 'Item' suele ser mayúscula en Dynamo
-    user = res.get('Item')
+    image_data = body.get('image_data') 
+    foto_url = 'https://via.placeholder.com/400x200?text=Sin+Foto'
 
-    if not user or user['password'] != hashlib.sha256(password.encode()).hexdigest():
-        return response(401, {'message': 'Credenciales inválidas'})
+    if image_data and BUCKET_NAME:
+        try:
+            header, imgstr = image_data.split(';base64,')
+            ext = header.split('/')[-1].split(';')[0]
+            file_name = f"condos/{uuid.uuid4()}.{ext}"
+            
+            s3.put_object(
+                Bucket=BUCKET_NAME,
+                Key=file_name,
+                Body=base64.b64decode(imgstr),
+                ContentType=f"image/{ext}"
+            )
+            foto_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{file_name}"
+            del imgstr
+        except Exception as e:
+            print(f"Error S3: {str(e)}")
 
-    token = jwt.encode({
-        'email': email,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-    }, get_jwt_secret(), algorithm='HS256')
+    condo = {
+        'id': str(uuid.uuid4()),
+        'admin_owner': payload.get('email').lower(),
+        'nombre': body.get('nombre'),
+        'direccion': body.get('direccion'),
+        'descripcion': body.get('descripcion', ''),
+        'foto_url': foto_url,
+        'created_at': datetime.datetime.utcnow().isoformat()
+    }
+    condos_table.put_item(Item=condo)
+    return response(201, condo)
 
-    return response(200, {'token': token})
-
-def create_resident(event):
+def get_condos(event):
     payload = verify_token(get_token_from_header(event))
     if not payload: return response(401, {'message': 'No autorizado'})
 
+    email = payload.get('email', '').lower().strip()
+    role = payload.get('role')
+
+    if role == 'admin':
+        items = condos_table.scan(FilterExpression=Attr('admin_owner').eq(email)).get('Items', [])
+    else:
+        res_info = residents_table.scan(FilterExpression=Attr('email').eq(email)).get('Items', [])
+        if res_info:
+            target_id = res_info[0].get('condo_id')
+            items = condos_table.scan(FilterExpression=Attr('id').eq(target_id)).get('Items', [])
+        else:
+            items = []
+            
+    return response(200, items)
+
+# -------- LÓGICA DE RESIDENTES (Incluye Eliminar) --------
+
+def create_resident(event):
+    payload = verify_token(get_token_from_header(event))
+    if not payload or payload.get('role') != 'admin': return response(403, {'message': 'Acceso denegado'})
+    
     body = get_body(event)
     resident = {
-        'id': str(uuid.uuid4()),
-        'name': body.get('name'),
-        'apartment': body.get('apartment'),
-        'email': body.get('email'),
+        'id': str(uuid.uuid4()), 
+        'admin_owner': payload['email'].lower(), 
+        'name': body.get('name'), 
+        'apartment': body.get('apartment'), 
+        'email': body.get('email', '').lower().strip(), 
+        'condo_id': body.get('condo_id'), 
         'created_at': datetime.datetime.utcnow().isoformat()
     }
     residents_table.put_item(Item=resident)
     return response(201, resident)
 
 def get_residents(event):
-    if not verify_token(get_token_from_header(event)): 
-        return response(401, {'message': 'No autorizado'})
+    payload = verify_token(get_token_from_header(event))
+    if not payload: return response(401, {'message': 'No autorizado'})
     
-    items = residents_table.scan().get('Items', [])
+    email = payload['email'].lower()
+    if payload['role'] == 'admin':
+        items = residents_table.scan(FilterExpression=Attr('admin_owner').eq(email)).get('Items', [])
+    else:
+        items = residents_table.scan(FilterExpression=Attr('email').eq(email)).get('Items', [])
     return response(200, items)
 
-def create_payment(event):
-    if not verify_token(get_token_from_header(event)): 
-        return response(401, {'message': 'No autorizado'})
+def delete_resident(event):
+    payload = verify_token(get_token_from_header(event))
+    if not payload or payload.get('role') != 'admin':
+        return response(403, {'message': 'Acceso denegado'})
 
+    # Se espera el ID en la URL: /residents?id=XXXX
+    params = event.get('queryStringParameters') or {}
+    res_id = params.get('id')
+
+    if not res_id:
+        return response(400, {'message': 'Falta el ID del residente'})
+
+    try:
+        residents_table.delete_item(Key={'id': res_id})
+        return response(200, {'message': 'Residente eliminado correctamente'})
+    except Exception as e:
+        print(f"Error borrando residente: {str(e)}")
+        return response(500, {'message': 'Error al eliminar'})
+
+# -------- LÓGICA DE AUTENTICACIÓN --------
+
+def register(event):
     body = get_body(event)
-    payment = {
-        'id': str(uuid.uuid4()),
-        'residentId': body.get('residentId'),
-        'amount': Decimal(str(body.get('amount', 0))), # Uso de Decimal para DynamoDB
-        'date': body.get('date'),
-        'created_at': datetime.datetime.utcnow().isoformat()
-    }
-    payments_table.put_item(Item=payment)
-    return response(201, payment)
+    email = body.get('email', '').lower().strip()
+    password = body.get('password')
+    admin_key = body.get('admin_key')
 
-# --- Funciones de relleno para mantener la estructura ---
-def get_payments(event): return response(200, payments_table.scan().get('Items', []))
-def get_announcements(event): return response(200, announcements_table.scan().get('Items', []))
+    if not email or not password or not is_valid_email(email):
+        return response(400, {'message': 'Datos inválidos'})
+
+    role = 'admin' if admin_key == get_admin_master_key() else 'residente'
+    hashed_password = hashlib.sha256(password.encode()).hexdigest()
+    
+    try:
+        users_table.put_item(
+            Item={'email': email, 'password': hashed_password, 'role': role},
+            ConditionExpression='attribute_not_exists(email)'
+        )
+        return response(201, {'message': f'Registro exitoso como {role}'})
+    except: return response(400, {'message': 'Usuario ya existe'})
+
+def login(event):
+    body = get_body(event)
+    email = body.get('email', '').lower().strip()
+    user = users_table.get_item(Key={'email': email}).get('Item')
+    
+    if not user or user['password'] != hashlib.sha256(body.get('password').encode()).hexdigest():
+        return response(401, {'message': 'Credenciales incorrectas'})
+    
+    token = jwt.encode({
+        'email': email, 'role': user['role'], 
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=2)
+    }, get_jwt_secret(), algorithm='HS256')
+    
+    return response(200, {'token': token})
+
+# -------- OTROS (ANUNCIOS, PAGOS, MANTENIMIENTO) --------
+
 def create_announcement(event):
-    body = get_body(event)
-    item = {'id': str(uuid.uuid4()), 'title': body.get('title'), 'content': body.get('content')}
+    p = verify_token(get_token_from_header(event))
+    if not p or p['role'] != 'admin': return response(403, {'message': 'Error'})
+    b = get_body(event)
+    item = {'id': str(uuid.uuid4()), 'admin_owner': p['email'].lower(), 'title': b.get('title'), 'content': b.get('content'), 'date': datetime.datetime.utcnow().isoformat()}
     announcements_table.put_item(Item=item)
     return response(201, item)
-def get_maintenance(event): return response(200, maintenance_table.scan().get('Items', []))
+
+def get_announcements(event): return response(200, announcements_table.scan().get('Items', []))
+
+def create_payment(event):
+    p = verify_token(get_token_from_header(event))
+    if not p: return response(401, {'message': 'Error'})
+    b = get_body(event)
+    item = {'id': str(uuid.uuid4()), 'resident_email': p['email'].lower(), 'amount': Decimal(str(b.get('amount', 0))), 'date': b.get('date'), 'description': b.get('description'), 'status': 'completado'}
+    payments_table.put_item(Item=item)
+    return response(201, item)
+
+def get_payments(event):
+    p = verify_token(get_token_from_header(event))
+    if not p: return response(401, {'message': 'Error'})
+    items = payments_table.scan().get('Items', []) if p['role'] == 'admin' else payments_table.scan(FilterExpression=Attr('resident_email').eq(p['email'].lower())).get('Items', [])
+    return response(200, items)
+
 def create_maintenance(event):
-    body = get_body(event)
-    item = {'id': str(uuid.uuid4()), 'status': 'pendiente', 'description': body.get('description')}
+    p = verify_token(get_token_from_header(event))
+    if not p: return response(401, {'message': 'Error'})
+    b = get_body(event)
+    item = {'id': str(uuid.uuid4()), 'resident_email': p['email'].lower(), 'type': b.get('type'), 'description': b.get('description'), 'priority': b.get('priority'), 'status': 'pendiente'}
     maintenance_table.put_item(Item=item)
     return response(201, item)
 
-# -------- HELPERS --------
+def get_maintenance(event): return response(200, maintenance_table.scan().get('Items', []))
 
-def get_body(event):
-    b = event.get('body', '{}')
+# -------- HELPERS --------
+def get_body(e):
+    b = e.get('body', '{}')
     return json.loads(b) if isinstance(b, str) else b
 
-def response(status, body):
-    # Convertir Decimales a float/int para que JSON pueda serializar la respuesta
+def response(s, b):
     return {
-        'statusCode': status,
-        'body': json.dumps(body, default=str) 
+        'statusCode': s, 
+        'headers': {
+            'Content-Type': 'application/json', 
+            'Access-Control-Allow-Origin': '*', 
+            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,DELETE', 
+            'Access-Control-Allow-Headers': 'Content-Type,Authorization'
+        }, 
+        'body': json.dumps(b, default=str)
     }
 
-def get_token_from_header(event):
-    auth = event.get('headers', {}).get('authorization', '')
+def get_token_from_header(e):
+    h = e.get('headers', {})
+    auth = h.get('Authorization') or h.get('authorization', '')
     return auth[7:] if auth.startswith('Bearer ') else None
 
-def verify_token(token):
-    if not token: return None
-    try:
-        return jwt.decode(token, get_jwt_secret(), algorithms=['HS256'])
-    except:
-        return None
+def verify_token(t):
+    if not t: return None
+    try: return jwt.decode(t, get_jwt_secret(), algorithms=['HS256'])
+    except: return None

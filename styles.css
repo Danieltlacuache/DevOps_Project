@@ -1,127 +1,103 @@
+:root {
+    --primary: #2563eb;
+    --secondary: #10b981;
+    --danger: #ef4444;
+    --bg: #f8fafc;
+    --text: #1e293b;
+}
+
 body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
     margin: 0;
 }
 
-.container {
-    background-color: white;
-    padding: 2rem;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    width: 100%;
-    max-width: 400px;
-}
+.container { max-width: 1100px; margin: 0 auto; padding: 20px; }
 
-h1 {
-    text-align: center;
-    margin-bottom: 1.5rem;
-    color: #333;
+/* Header */
+header {
+    background: white;
+    padding: 1rem 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-
-.tabs {
+.nav-container {
     display: flex;
-    margin-bottom: 1rem;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+.logo span { color: var(--primary); }
+
+/* Cards y Layout */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
 }
 
-.tab-button {
-    flex: 1;
-    padding: 0.5rem;
-    border: none;
-    background-color: #e0e0e0;
-    cursor: pointer;
-    border-radius: 4px 4px 0 0;
-}
-
-.tab-button.active {
-    background-color: #007bff;
-    color: white;
-}
-
-.tab-content {
-    display: none;
-}
-
-.tab-content.active {
-    display: block;
-}
-
-.form-group {
-    margin-bottom: 1rem;
-}
-
-label {
-    display: block;
-    margin-bottom: 0.5rem;
-    color: #555;
-}
-
+/* Formularios */
 input {
     width: 100%;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
     box-sizing: border-box;
 }
 
-.btn {
-    width: 100%;
-    padding: 0.75rem;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1rem;
-}
-
-.btn:hover {
-    background-color: #0056b3;
-}
-
-.message {
-    margin-top: 1rem;
-    padding: 0.5rem;
-    border-radius: 4px;
+.file-upload {
+    padding: 15px;
+    border: 2px dashed #cbd5e1;
     text-align: center;
+    border-radius: 8px;
+    margin: 10px 0;
+    cursor: pointer;
 }
 
-.message.success {
-    background-color: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
-}
-
-.message.error {
-    background-color: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-}
-
-.btn-small {
-    width: auto;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-    margin-right: 0.5rem;
-}
-
-textarea {
+/* Botones */
+button {
     width: 100%;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    box-sizing: border-box;
-    resize: vertical;
+    padding: 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.3s;
+}
+.btn-primary { background: var(--primary); color: white; }
+.btn-secondary { background: var(--secondary); color: white; }
+.btn-logout { background: #f1f5f9; color: var(--text); width: auto; padding: 8px 16px; }
+.btn-delete { background: var(--danger); color: white; width: auto; padding: 5px 10px; font-size: 0.8rem; }
+
+/* Grid de Condominios en Admin */
+.condos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
 }
 
-select {
+/* Tabla */
+.styled-table {
     width: 100%;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    box-sizing: border-box;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+.styled-table th, .styled-table td {
+    text-align: left;
+    padding: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+/* Vista Residente */
+.residente-dashboard {
+    text-align: center;
+    padding: 40px;
+    background: white;
+    border-radius: 20px;
 }
