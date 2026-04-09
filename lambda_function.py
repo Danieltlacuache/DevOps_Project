@@ -26,7 +26,6 @@ def get_secret():
         print(f"Error obteniendo secreto: {e}")
         return "secret_key_iteso_fallback"
 
-# Obtener la llave una sola vez al cargar el contenedor de la Lambda
 JWT_SECRET = get_secret()
 
 def response(s, b):
@@ -58,7 +57,10 @@ def lambda_handler(event, context):
         'POST': {'/auth/register': register, '/auth/login': login, '/auth/generate-token': gen_token, '/condos': req_upload},
         'GET': {'/condos': get_condos},
         'PUT': {'/condos': confirm_condo, '/condos/reserve': reserve_condo},
-        'DELETE': {'/condos': delete_condo}
+        'DELETE': {
+            '/condos': delete_condo,
+            '/condos/reserve': cancel_reserve  # Ruta para liberar reserva
+        }
     }
     handler = routes.get(m, {}).get(p)
     return handler(event) if handler else response(404, {'msg': 'Ruta no encontrada'})
@@ -67,8 +69,8 @@ def register(e):
     b = json.loads(e.get('body', '{}'))
     email = b.get('email', '').lower().strip()
     tok = b.get('admin_token')
-    
     role = 'residente'
+    
     if tok:
         res = admin_tokens_table.get_item(Key={'token': tok}).get('Item')
         if res and not res.get('used'):
@@ -142,11 +144,49 @@ def get_condos(e):
     return response(200, {'available': available, 'my_reserva': my_reserva})
 
 def reserve_condo(e):
-    p, b = verify_token(e), json.loads(e.get('body', '{}'))
+    p = verify_token(e)
+    if not p: return response(401, {'msg': 'No autorizado'})
+    b = json.loads(e.get('body', '{}'))
     condo_id = b.get('condo_id')
-    residents_table.put_item(Item={'id': str(uuid.uuid4()), 'email': p['email'], 'condo_id': condo_id})
-    condos_table.update_item(Key={'id': condo_id}, UpdateExpression="SET estado = :s", ExpressionAttributeValues={':s': 'Ocupado'})
-    return response(200, {'message': 'Reservado'})
+    
+    # Evitar duplicados: solo registrar si no existe ya esa reserva
+    existing = residents_table.scan(
+        FilterExpression=Attr('email').eq(p['email']) & Attr('condo_id').eq(condo_id)
+    ).get('Items', [])
+    
+    if not existing:
+        residents_table.put_item(Item={'id': str(uuid.uuid4()), 'email': p['email'], 'condo_id': condo_id})
+        condos_table.update_item(
+            Key={'id': condo_id}, 
+            UpdateExpression="SET estado = :s", 
+            ExpressionAttributeValues={':s': 'Ocupado'}
+        )
+        return response(200, {'message': 'Reservado con éxito'})
+    return response(400, {'message': 'Ya tienes una reserva en este edificio'})
+
+def cancel_reserve(e):
+    p = verify_token(e)
+    if not p: return response(401, {'msg': 'No autorizado'})
+    condo_id = e.get('queryStringParameters', {}).get('condo_id')
+    
+    try:
+        # 1. Buscar y eliminar registros en Residents
+        res_items = residents_table.scan(
+            FilterExpression=Attr('email').eq(p['email']) & Attr('condo_id').eq(condo_id)
+        ).get('Items', [])
+        
+        for item in res_items:
+            residents_table.delete_item(Key={'id': item['id']})
+            
+        # 2. Liberar el Condominio
+        condos_table.update_item(
+            Key={'id': condo_id},
+            UpdateExpression="SET estado = :s",
+            ExpressionAttributeValues={':s': 'Disponible'}
+        )
+        return response(200, {'message': 'Reserva cancelada exitosamente'})
+    except Exception as err:
+        return response(500, {'message': str(err)})
 
 def gen_token(e):
     p = verify_token(e)
@@ -163,6 +203,6 @@ def delete_condo(e):
             file_key = item['foto_url'].split('.com/')[-1]
             s3_client.delete_object(Bucket=BUCKET_NAME, Key=file_key)
         condos_table.delete_item(Key={'id': cid})
-        return response(200, {'message': 'Eliminado'})
+        return response(200, {'message': 'Condominio eliminado'})
     except Exception as err:
         return response(500, {'message': str(err)})
