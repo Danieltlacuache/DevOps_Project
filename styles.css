@@ -1,103 +1,292 @@
+/* --- VARIABLES MODERNAS (Paleta Azul Profesional) --- */
 :root {
-    --primary: #2563eb;
-    --secondary: #10b981;
-    --danger: #ef4444;
-    --bg: #f8fafc;
-    --text: #1e293b;
+    --primary: #2563eb; /* Azul ITESO principal */
+    --primary-hover: #1d4ed8;
+    --bg-main: #f1f5f9; /* Gris muy claro de fondo */
+    --card-bg: #ffffff;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --radius: 16px; /* Bordes más redondeados */
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+/* --- RESET Y BASE --- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif; /* Tipografía profesional */
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: var(--bg);
-    color: var(--text);
-    margin: 0;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    line-height: 1.6;
 }
 
-.container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.container {
+    max-width: 1250px;
+    margin: 0 auto;
+    padding: 20px;
+}
 
-/* Header */
+/* --- HEADER GLASSMORPHISM (Barra Superior) --- */
 header {
-    background: white;
-    padding: 1rem 0;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px); /* Efecto borroso de cristal */
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
+
 .nav-container {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 0 20px;
-}
-.logo span { color: var(--primary); }
-
-/* Cards y Layout */
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.card {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    padding: 15px 20px;
 }
 
-/* Formularios */
-input {
-    width: 100%;
-    padding: 10px;
-    margin: 10px 0;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    box-sizing: border-box;
+.logo {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--text-main);
+    letter-spacing: -1px;
 }
 
-.file-upload {
-    padding: 15px;
-    border: 2px dashed #cbd5e1;
-    text-align: center;
-    border-radius: 8px;
-    margin: 10px 0;
-    cursor: pointer;
+.logo span {
+    color: var(--primary);
 }
 
-/* Botones */
-button {
-    width: 100%;
-    padding: 12px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: 0.3s;
-}
-.btn-primary { background: var(--primary); color: white; }
-.btn-secondary { background: var(--secondary); color: white; }
-.btn-logout { background: #f1f5f9; color: var(--text); width: auto; padding: 8px 16px; }
-.btn-delete { background: var(--danger); color: white; width: auto; padding: 5px 10px; font-size: 0.8rem; }
-
-/* Grid de Condominios en Admin */
-.condos-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+.user-info {
+    display: flex;
+    align-items: center;
     gap: 15px;
-    margin-top: 15px;
 }
 
-/* Tabla */
-.styled-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 15px;
-}
-.styled-table th, .styled-table td {
-    text-align: left;
-    padding: 12px;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-/* Vista Residente */
-.residente-dashboard {
-    text-align: center;
-    padding: 40px;
-    background: white;
+.badge-email {
+    background: #dbeafe;
+    color: var(--primary);
+    padding: 5px 12px;
     border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.btn-logout {
+    background: none;
+    border: 1px solid var(--border);
+    padding: 7px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: 0.2s;
+}
+
+.btn-logout:hover {
+    background: #fee2e2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+/* --- BENTO GRID SYSTEM (Estructura de Tarjetas) --- */
+.bento-grid {
+    display: grid;
+    grid-template-columns: 380px 1fr; /* Columna izquierda fija, derecha flexible */
+    gap: 25px;
+    margin-top: 25px;
+}
+
+@media (max-width: 900px) {
+    .bento-grid {
+        grid-template-columns: 1fr; /* En móvil, una sola columna */
+    }
+}
+
+/* --- TARJETAS (Cards) --- */
+.card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 30px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+}
+
+.card h3 {
+    font-size: 1.3rem;
+    font-weight: 800;
+    margin-bottom: 20px;
+    color: #111827;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* --- FORMULARIOS --- */
+.input-group {
+    margin-bottom: 18px;
+}
+
+.input-group label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+    color: #475569;
+}
+
+.card input[type="text"] {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: 0.2s;
+}
+
+.card input[type="text"]:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+/* Área de subida de archivo */
+.file-area {
+    margin-bottom: 18px;
+}
+
+.file-label {
+    display: block;
+    padding: 14px;
+    background: #f8fafc;
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--primary);
+    font-weight: 600;
+    transition: 0.2s;
+}
+
+.file-label:hover {
+    background: #eff6ff;
+    border-color: var(--primary);
+}
+
+/* Botones Vistosos */
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    padding: 14px 20px;
+    border-radius: 12px;
+    border: none;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.20);
+}
+
+/* --- GRID DE INVENTARIO (Derecha) --- */
+.grid-layout {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 20px;
+}
+
+/* Tarjeta individual de condominio */
+.condo-box {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.condo-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.condo-box img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+}
+
+.condo-info {
+    padding: 20px;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.condo-info h4 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.condo-info p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 15px;
+}
+
+/* Etiquetas de Estado */
+.status-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.disponible {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.ocupado {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Botones de acción sm */
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+    padding: 10px 20px;
+    background: #f8fafc;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: white;
+    transition: 0.2s;
+}
+
+.btn-sm:hover {
+    background: #f1f5f9;
 }

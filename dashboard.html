@@ -3,73 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CondoManager Pro - Dashboard</title>
+    <title>CondoManager Pro | Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <header>
-        <div class="nav-container">
-            <h2 class="logo">CondoManager<span>Pro</span></h2>
+        <nav class="container nav-glass">
+            <div class="logo">🏢 CondoManager<span>Pro</span></div>
             <div class="user-info">
-                <span id="user-email">cargando...</span>
+                <span id="user-email" class="badge-email">cargando...</span>
                 <button onclick="logout()" class="btn-logout">Cerrar Sesión</button>
             </div>
-        </div>
+        </nav>
     </header>
 
     <main class="container">
+        <div id="super-user-controls" style="display: none; margin-bottom: 25px;">
+            <section class="card master-card" style="background: linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%); color: white; padding: 20px; border-radius: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h3 style="color: white; margin: 0;">👑 Panel Maestro</h3>
+                        <p style="color: #e2e8f0; margin: 5px 0 0 0;">Genera invitaciones para nuevos administradores.</p>
+                    </div>
+                    <button onclick="createInviteToken()" class="btn-primary" style="width: auto; background: white; color: #6d28d9; padding: 10px 20px;">Generar Token</button>
+                </div>
+            </section>
+        </div>
+
         <section id="admin-section" style="display: none;">
-            <div class="grid">
+            <div class="bento-grid">
                 <div class="card">
-                    <h3>🏢 Registrar Condominio</h3>
+                    <h3>🏢 Registrar Edificio</h3>
                     <form id="add-condo-form">
-                        <input type="text" id="condo-nombre" placeholder="Nombre del Edificio" required>
-                        <input type="text" id="condo-direccion" placeholder="Dirección" required>
-                        <div class="file-upload">
-                            <label for="condo-file">Subir Foto a S3</label>
-                            <input type="file" id="condo-file" accept="image/*" required>
+                        <div class="input-group">
+                            <label>Nombre del Condominio</label>
+                            <input type="text" id="condo-nombre" placeholder="Ej. Torre Altura" required>
                         </div>
-                        <img id="preview" src="" alt="Previsualización" style="display:none; width:100%; border-radius:8px; margin-top:10px;">
-                        <button type="submit" class="btn-primary">Crear Edificio</button>
+                        <div class="input-group">
+                            <label>Dirección</label>
+                            <input type="text" id="condo-direccion" placeholder="Calle y número" required>
+                        </div>
+                        <div class="file-area">
+                            <input type="file" id="condo-file" accept="image/*" style="display: none;">
+                            <label for="condo-file" class="file-label" style="display: block; padding: 15px; border: 2px dashed #e2e8f0; text-align: center; cursor: pointer; border-radius: 12px;">📸 Seleccionar Foto</label>
+                        </div>
+                        <img id="preview" src="" style="display:none; width:100%; border-radius:12px; margin-top:15px; height: 160px; object-fit: cover;">
+                        <button type="submit" class="btn-primary" style="margin-top: 20px;">Guardar Condominio</button>
                     </form>
                 </div>
 
                 <div class="card">
-                    <h3>👤 Vincular Residente</h3>
-                    <form id="add-resident-form">
-                        <input type="text" id="res-name" placeholder="Nombre del Residente" required>
-                        <input type="email" id="res-email" placeholder="Correo Electrónico" required>
-                        <input type="text" id="res-apt" placeholder="Departamento" required>
-                        <input type="text" id="res-condo-id" placeholder="Pegar ID del Condominio" required>
-                        <button type="submit" class="btn-secondary">Vincular</button>
-                    </form>
+                    <h3>📋 Gestión de Inventario</h3>
+                    <div id="condos-list-admin" class="grid-layout"></div>
                 </div>
-            </div>
-
-            <div class="card" style="margin-top: 20px;">
-                <h3>Mis Edificios (Gestión de Estados)</h3>
-                <div id="condos-list-admin" class="condos-grid"></div>
-            </div>
-
-            <div class="card" style="margin-top: 20px;">
-                <h3>Lista de Residentes</h3>
-                <table class="styled-table">
-                    <thead>
-                        <tr>
-                            <th>Nombre</th>
-                            <th>Depto</th>
-                            <th>Email</th>
-                            <th>Condominio Asignado</th> <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="residents-list"></tbody>
-                </table>
             </div>
         </section>
 
         <section id="residente-section" style="display: none;">
-            <div id="mi-condominio-visual" class="residente-dashboard">
-                </div>
+            <div class="tabs-nav" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button id="tab-market" class="tab-btn active" onclick="switchTab('market')">🛒 Marketplace</button>
+                <button id="tab-reservas" class="tab-btn" onclick="switchTab('reservas')">🔑 Mis Reservas</button>
+            </div>
+            <div id="view-market" class="card">
+                <h3>Edificios Disponibles</h3>
+                <div id="available-grid" class="grid-layout" style="margin-top: 20px;"></div>
+            </div>
+            <div id="view-reservas" class="card" style="display: none;">
+                <h3>Tu Residencia Actual</h3>
+                <div id="my-reservas-grid" class="grid-layout" style="margin-top: 20px;"></div>
+            </div>
         </section>
     </main>
 
