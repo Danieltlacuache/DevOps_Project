@@ -1,47 +1,50 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Sistema Gestión Condominios - ITESO 2026.
+Description: >
+  Proyecto Final CondoManager Pro - Sistema Escalable de Gestión de Condominios
 
 Globals:
   Function:
     Timeout: 30
+    MemorySize: 256
     Runtime: python3.10
-    MemorySize: 512
     Environment:
       Variables:
+        USERS_TABLE: !Ref UsersTable
+        RESIDENTS_TABLE: !Ref ResidentsTable
+        ADMINS_DATA_TABLE: !Ref AdminsTable
+        CONDOS_TABLE: !Ref CondosTable
+        ADMIN_TOKENS_TABLE: !Ref AdminTokensTable
         PHOTOS_BUCKET: !Ref CondoPhotosBucket
-        USERS_TABLE: Users
-        RESIDENTS_TABLE: Residents
-        CONDOS_TABLE: Condominios
-        ADMIN_TOKENS_TABLE: AdminTokens
-  Api:
-    Cors:
-      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-      AllowOrigin: "'*'"
 
 Resources:
-  UsersTable:
-    Type: AWS::Serverless::SimpleTable
+  # ==============================================================================
+  # 1. FUNCIÓN LAMBDA PRINCIPAL
+  # ==============================================================================
+  CondoManagerFunction:
+    Type: AWS::Serverless::Function
     Properties:
-      PrimaryKey: { Name: email, Type: String }
-      TableName: Users
-  ResidentsTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
-      TableName: Residents
-  CondosTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
-      TableName: Condominios
-  AdminTokensTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: token, Type: String }
-      TableName: AdminTokens
+      CodeUri: .
+      Handler: lambda_function.lambda_handler
+      Events:
+        CondoApi:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        # Permisos para todas las tablas de DynamoDB
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResidentsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref AdminsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref CondosTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref AdminTokensTable }
+        # Permiso total para el Bucket de Fotos (Subir y Borrar)
+        - S3CrudPolicy: { BucketName: !Ref CondoPhotosBucket }
 
+  # ==============================================================================
+  # 2. ALMACENAMIENTO DE IMÁGENES (S3)
+  # ==============================================================================
   CondoPhotosBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -49,45 +52,100 @@ Resources:
       PublicAccessBlockConfiguration:
         BlockPublicAcls: false
         BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ['*']
             AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
             AllowedOrigins: ['*']
-            MaxAge: 3000
+            ExposedHeaders: ['ETag']
 
+  # AÑADE ESTA POLÍTICA PARA QUE LAS FOTOS SEAN VISIBLES
   BucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref CondoPhotosBucket
       PolicyDocument:
-        Version: '2012-10-17'
         Statement:
-          - Effect: Allow
-            Action: 's3:GetObject'
-            Resource: !Sub 'arn:aws:s3:::${CondoPhotosBucket}/*'
-            Principal: '*'
+          - Action: ['s3:GetObject']
+            Effect: Allow
+            Resource: !Sub "arn:aws:s3:::${CondoPhotosBucket}/*"
+            Principal: "*"
 
-  CondoManagerFunction:
-    Type: AWS::Serverless::Function
+  # ==============================================================================
+  # 3. BASES DE DATOS (DYNAMODB)
+  # ==============================================================================
+
+  # Tabla de Usuarios (Auth principal)
+  UsersTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      CodeUri: .
-      Handler: lambda_function.lambda_handler
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: Users }
-        - DynamoDBCrudPolicy: { TableName: Residents }
-        - DynamoDBCrudPolicy: { TableName: Condominios }
-        - DynamoDBCrudPolicy: { TableName: AdminTokens }
-        - S3CrudPolicy: { BucketName: !Sub "condo-manager-photos-${AWS::AccountId}" }
-        - Statement:
-            - Effect: Allow
-              Action: 'secretsmanager:GetSecretValue'
-              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:jwt-secret-key-*"
-      Events:
-        MainApi:
-          Type: Api
-          Properties: { Path: "/{proxy+}", Method: any }
+      TableName: Users
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
 
+  # Tabla de Residentes (Control de ocupación)
+  ResidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Residents
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Tabla de Administradores (Perfiles de admin)
+  AdminsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Administradores
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Tabla de Condominios (Inventario de edificios)
+  CondosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Condominios
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Tabla de Tokens de Invitación
+  AdminTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: AdminTokens
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+# ==============================================================================
+# 4. SALIDAS (OUTPUTS)
+# ==============================================================================
 Outputs:
   ApiUrl:
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+    Description: "URL base de tu API Gateway"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

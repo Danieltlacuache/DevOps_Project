@@ -26,13 +26,13 @@
                         <h3 style="color: white; margin: 0;">👑 Panel Maestro</h3>
                         <p style="color: #e2e8f0; margin: 5px 0 0 0;">Genera invitaciones para nuevos administradores.</p>
                     </div>
-                    <button onclick="createInviteToken()" class="btn-primary" style="width: auto; background: white; color: #6d28d9; padding: 10px 20px;">Generar Token</button>
+                    <button onclick="createInviteToken()" class="btn-primary" style="width: auto; background: white; color: #6d28d9; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Generar Token</button>
                 </div>
             </section>
         </div>
 
         <section id="admin-section" style="display: none;">
-            <div class="bento-grid">
+            <div class="bento-grid" style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
                 <div class="card">
                     <h3>🏢 Registrar Edificio</h3>
                     <form id="add-condo-form">
@@ -40,16 +40,17 @@
                             <label>Nombre del Condominio</label>
                             <input type="text" id="condo-nombre" placeholder="Ej. Torre Altura" required>
                         </div>
-                        <div class="input-group">
+                        <div class="input-group" style="margin-top: 15px;">
                             <label>Dirección</label>
                             <input type="text" id="condo-direccion" placeholder="Calle y número" required>
                         </div>
-                        <div class="file-area">
+                        <div class="file-area" style="margin-top: 15px;">
                             <input type="file" id="condo-file" accept="image/*" style="display: none;">
-                            <label for="condo-file" class="file-label" style="display: block; padding: 15px; border: 2px dashed #e2e8f0; text-align: center; cursor: pointer; border-radius: 12px;">📸 Seleccionar Foto</label>
+                            <label for="condo-file" class="file-label" style="display: block; padding: 20px; border: 2px dashed #6d28d9; text-align: center; cursor: pointer; border-radius: 12px; background: #f8fafc;">📸 Seleccionar Foto</label>
                         </div>
-                        <img id="preview" src="" style="display:none; width:100%; border-radius:12px; margin-top:15px; height: 160px; object-fit: cover;">
-                        <button type="submit" class="btn-primary" style="margin-top: 20px;">Guardar Condominio</button>
+                        <img id="preview" src="" style="display:none; width:100%; border-radius:12px; margin-top:15px; height: 180px; object-fit: cover; border: 1px solid #e2e8f0;">
+                        
+                        <button type="submit" class="btn-primary" style="margin-top: 20px; width: 100%;">Guardar Condominio</button>
                     </form>
                 </div>
 
@@ -65,10 +66,12 @@
                 <button id="tab-market" class="tab-btn active" onclick="switchTab('market')">🛒 Marketplace</button>
                 <button id="tab-reservas" class="tab-btn" onclick="switchTab('reservas')">🔑 Mis Reservas</button>
             </div>
+            
             <div id="view-market" class="card">
                 <h3>Edificios Disponibles</h3>
                 <div id="available-grid" class="grid-layout" style="margin-top: 20px;"></div>
             </div>
+
             <div id="view-reservas" class="card" style="display: none;">
                 <h3>Tu Residencia Actual</h3>
                 <div id="my-reservas-grid" class="grid-layout" style="margin-top: 20px;"></div>
