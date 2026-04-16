@@ -33,13 +33,11 @@ Resources:
             Path: /{proxy+}
             Method: ANY
       Policies:
-        # Permisos para todas las tablas de DynamoDB
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ResidentsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref AdminsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref CondosTable }
         - DynamoDBCrudPolicy: { TableName: !Ref AdminTokensTable }
-        # Permiso total para el Bucket de Fotos (Subir y Borrar)
         - S3CrudPolicy: { BucketName: !Ref CondoPhotosBucket }
 
   # ==============================================================================
@@ -61,8 +59,8 @@ Resources:
             AllowedOrigins: ['*']
             ExposedHeaders: ['ETag']
 
-  # AÑADE ESTA POLÍTICA PARA QUE LAS FOTOS SEAN VISIBLES
-  BucketPolicy:
+  # Política para que las fotos sean visibles en la web
+  CondoPhotosBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref CondoPhotosBucket
@@ -76,8 +74,6 @@ Resources:
   # ==============================================================================
   # 3. BASES DE DATOS (DYNAMODB)
   # ==============================================================================
-
-  # Tabla de Usuarios (Auth principal)
   UsersTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -90,7 +86,6 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # Tabla de Residentes (Control de ocupación)
   ResidentsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -103,7 +98,6 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # Tabla de Administradores (Perfiles de admin)
   AdminsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -116,7 +110,6 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # Tabla de Condominios (Inventario de edificios)
   CondosTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -129,7 +122,6 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # Tabla de Tokens de Invitación
   AdminTokensTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -147,5 +139,5 @@ Resources:
 # ==============================================================================
 Outputs:
   ApiUrl:
-    Description: "URL base de tu API Gateway"
+    Description: "URL de la API para configurar en tus archivos JS"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

@@ -1,26 +1,45 @@
+// --- CONFIGURACIÓN ---
 const API_BASE_URL = 'https://hpqvi22yyd.execute-api.us-east-2.amazonaws.com/Prod'; 
 const SUPER_USER_EMAIL = 'admin@admin.com'; 
 const token = localStorage.getItem('token');
 
+// Redirigir al login si no hay token
 if (!token) window.location.href = 'index.html';
 
+// Decodificar info del usuario desde el JWT
 const userData = JSON.parse(atob(token.split('.')[1]));
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Mostrar el email del usuario en el header
     document.getElementById('user-email').textContent = userData.email;
 
+    // --- CONTROL DE VISTAS Y SINCRONIZACIÓN POR ROL ---
     if (userData.role === 'admin') {
         document.getElementById('admin-section').style.display = 'block';
         if (userData.email.toLowerCase() === SUPER_USER_EMAIL.toLowerCase()) {
             document.getElementById('super-user-controls').style.display = 'block';
         }
-        loadAdminCondos();
+        
+        loadAdminCondos(); // Carga inicial
+
+        // Sincronización para el Admin (detectar reservas de residentes)
+        setInterval(() => {
+            console.log("Admin: Sincronizando estado de inventario...");
+            loadAdminCondos();
+        }, 5000); // Cada 5 segundos para la demo
+
     } else {
         document.getElementById('residente-section').style.display = 'block';
         switchTab('market'); 
+        
+        // Sincronización para el Residente (detectar nuevos edificios o bajas)
+        setInterval(() => {
+            console.log("Residente: Sincronizando Marketplace...");
+            loadResidenteDashboard();
+        }, 8000);
     }
 
-    // --- LÓGICA DE PREVISUALIZACIÓN ---
+    // --- LÓGICA DE PREVISUALIZACIÓN DE IMAGEN ---
     const fileInput = document.getElementById('condo-file');
     const preview = document.getElementById('preview');
 
@@ -37,17 +56,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// --- ACCIONES ADMINISTRADOR ---
+// ==============================================================================
+// SECCIÓN ADMINISTRADOR (OPTIMISTIC UI)
+// ==============================================================================
+
 document.getElementById('add-condo-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const file = document.getElementById('condo-file').files[0];
     const nombre = document.getElementById('condo-nombre').value;
     const direccion = document.getElementById('condo-direccion').value;
+    const previewSrc = document.getElementById('preview').src;
 
     if (!file) return alert("Por favor, selecciona una foto.");
 
+    // --- CAMBIO INSTANTÁNEO ---
+    const listContainer = document.getElementById('condos-list-admin');
+    const tempId = 'temp-' + Date.now();
+    const optimisticHTML = `
+        <div class="condo-box card" id="${tempId}" style="padding:10px; border:1px solid #e2e8f0; margin-bottom:10px; opacity: 0.7;">
+            <img src="${previewSrc}" style="width:100%; height:120px; object-fit:cover; border-radius:8px; filter: grayscale(100%);">
+            <h4 style="margin:10px 0 5px 0;">${nombre}</h4>
+            <span class="badge" style="font-size:12px; background:#fef08a; padding:2px 8px; border-radius:10px;">Subiendo...</span>
+        </div>`;
+    
+    listContainer.insertAdjacentHTML('afterbegin', optimisticHTML);
+    e.target.reset();
+    document.getElementById('preview').style.display = 'none';
+
     try {
-        // 1. URL Firmada
         const resUrl = await fetch(`${API_BASE_URL}/condos`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -55,43 +91,62 @@ document.getElementById('add-condo-form')?.addEventListener('submit', async (e) 
         });
         const { upload_url, file_key } = await resUrl.json();
 
-        // 2. Subida a S3
-        await fetch(upload_url, { 
-            method: 'PUT', 
-            headers: { 'Content-Type': file.type }, 
-            body: file 
-        });
+        await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
 
-        // 3. Confirmación en DynamoDB
         await fetch(`${API_BASE_URL}/condos`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ nombre, direccion, file_key })
         });
 
-        alert("¡Edificio registrado!");
-        location.reload();
+        // Confirmar éxito visualmente
+        const tempElement = document.getElementById(tempId);
+        if (tempElement) {
+            tempElement.style.opacity = "1";
+            tempElement.querySelector('img').style.filter = "none";
+            const badge = tempElement.querySelector('.badge');
+            badge.textContent = "Disponible";
+            badge.style.background = "#22c55e";
+            badge.style.color = "white";
+        }
+        
+        setTimeout(() => loadAdminCondos(), 2000);
     } catch (err) {
-        alert("Error al registrar condominio");
+        document.getElementById(tempId)?.remove();
+        alert("❌ Error al subir el condominio.");
     }
 });
 
 async function loadAdminCondos() {
-    const res = await fetch(`${API_BASE_URL}/condos`, { headers: { 'Authorization': `Bearer ${token}` } });
-    const condos = await res.json();
-    document.getElementById('condos-list-admin').innerHTML = condos.map(c => `
-        <div class="condo-box card" style="padding:10px; border:1px solid #e2e8f0; margin-bottom:10px;">
-            <img src="${c.foto_url}" style="width:100%; height:120px; object-fit:cover; border-radius:8px;">
-            <h4 style="margin:10px 0 5px 0;">${c.nombre}</h4>
-            <span class="badge" style="font-size:12px; background:#e2e8f0; padding:2px 8px; border-radius:10px;">${c.estado}</span>
-            <div style="margin-top:10px; display:flex; gap:5px;">
-                <button class="btn-sm" onclick="copyId('${c.id}')" style="flex:1;">🆔 ID</button>
-                <button class="btn-sm" onclick="deleteCondo('${c.id}')" style="color:red; flex:1;">🗑️</button>
-            </div>
-        </div>`).join('');
+    try {
+        const res = await fetch(`${API_BASE_URL}/condos`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const condos = await res.json();
+        const listContainer = document.getElementById('condos-list-admin');
+        
+        listContainer.innerHTML = condos.map(c => {
+            const isOcupado = c.estado === 'Ocupado';
+            const badgeBg = isOcupado ? '#ef4444' : '#22c55e';
+            
+            return `
+            <div class="condo-box card" style="padding:10px; border:1px solid #e2e8f0; margin-bottom:10px;">
+                <img src="${c.foto_url}" style="width:100%; height:120px; object-fit:cover; border-radius:8px;">
+                <h4 style="margin:10px 0 5px 0;">${c.nombre}</h4>
+                <span class="badge" style="font-size:12px; background:${badgeBg}; color:white; padding:2px 8px; border-radius:10px;">
+                    ${c.estado}
+                </span>
+                <div style="margin-top:10px; display:flex; gap:5px;">
+                    <button class="btn-sm" onclick="copyId('${c.id}')">🆔 ID</button>
+                    <button class="btn-sm" onclick="deleteCondo('${c.id}')" style="color:red; background:none; border:1px solid red; border-radius:4px; cursor:pointer;">🗑️</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (err) { console.error(err); }
 }
 
-// --- ACCIONES RESIDENTE ---
+// ==============================================================================
+// SECCIÓN RESIDENTE
+// ==============================================================================
+
 function switchTab(tab) {
     const marketView = document.getElementById('view-market');
     const reservasView = document.getElementById('view-reservas');
@@ -113,74 +168,67 @@ function switchTab(tab) {
 }
 
 async function loadResidenteDashboard() {
-    const res = await fetch(`${API_BASE_URL}/condos`, { headers: { 'Authorization': `Bearer ${token}` } });
-    const data = await res.json();
+    try {
+        const res = await fetch(`${API_BASE_URL}/condos`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
 
-    document.getElementById('available-grid').innerHTML = (data.available || []).map(c => `
-        <div class="condo-box card">
-            <img src="${c.foto_url}" style="width:100%; height:150px; object-fit:cover; border-radius:8px;">
-            <h4>${c.nombre}</h4>
-            <p style="font-size:14px; color:666;">${c.direccion}</p>
-            <button class="btn-primary" onclick="reserve('${c.id}')" style="width:100%; margin-top:10px;">Reservar</button>
-        </div>`).join('');
-
-    const resGrid = document.getElementById('my-reservas-grid');
-    if (data.my_reserva && data.my_reserva.length > 0) {
-        resGrid.innerHTML = data.my_reserva.map(c => `
+        // Marketplace
+        document.getElementById('available-grid').innerHTML = (data.available || []).map(c => `
             <div class="condo-box card">
                 <img src="${c.foto_url}" style="width:100%; height:150px; object-fit:cover; border-radius:8px;">
                 <h4>${c.nombre}</h4>
-                <button onclick="cancelReserve('${c.id}')" style="width:100%; margin-top:10px; color:red; border:1px solid red; background:none; padding:8px; border-radius:8px; cursor:pointer;">❌ Cancelar</button>
+                <p style="font-size:13px; color:#64748b;">${c.direccion}</p>
+                <button class="btn-primary" onclick="reserve('${c.id}')" style="width:100%; margin-top:10px;">Reservar</button>
             </div>`).join('');
-    } else {
-        resGrid.innerHTML = '<p>No tienes reservas activas.</p>';
-    }
+
+        // Mis Reservas
+        const resGrid = document.getElementById('my-reservas-grid');
+        if (data.my_reserva && data.my_reserva.length > 0) {
+            resGrid.innerHTML = data.my_reserva.map(c => `
+                <div class="condo-box card">
+                    <img src="${c.foto_url}" style="width:100%; height:150px; object-fit:cover; border-radius:8px;">
+                    <h4>${c.nombre}</h4>
+                    <button onclick="cancelReserve('${c.id}')" style="width:100%; margin-top:10px; color:red; border:1px solid red; background:none; padding:8px; border-radius:8px; cursor:pointer;">❌ Cancelar Reserva</button>
+                </div>`).join('');
+        } else {
+            resGrid.innerHTML = '<p style="padding:20px; color:#64748b;">No tienes propiedades reservadas.</p>';
+        }
+    } catch (err) { console.error(err); }
 }
 
-// --- FUNCIONES COMPARTIDAS ---
-// BUSCA ESTA FUNCIÓN EN TU JS Y DÉJALA ASÍ:
+// --- ACCIONES ---
+
 async function reserve(id) {
     const res = await fetch(`${API_BASE_URL}/condos/reserve`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ condo_id: id }) // <-- La Lambda espera 'condo_id'
+        body: JSON.stringify({ condo_id: id })
     });
     if (res.ok) {
-        alert("¡Reserva exitosa!");
+        alert("✅ Reserva confirmada");
         loadResidenteDashboard();
-    } else {
-        const d = await res.json();
-        alert(d.msg || "Error al reservar");
     }
 }
 
 async function cancelReserve(id) {
     if (!confirm("¿Liberar propiedad?")) return;
-    // Verifica que use: ?condo_id=
-    await fetch(`${API_BASE_URL}/condos/reserve?condo_id=${id}`, { 
-        method: 'DELETE', 
-        headers: { 'Authorization': `Bearer ${token}` } 
+    const res = await fetch(`${API_BASE_URL}/condos/reserve?condo_id=${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
     });
-    loadResidenteDashboard();
+    if (res.ok) loadResidenteDashboard();
 }
 
 async function createInviteToken() {
-    const res = await fetch(`${API_BASE_URL}/auth/generate-token`, { 
-        method: 'POST', 
-        headers: { 'Authorization': `Bearer ${token}` } 
-    });
+    const res = await fetch(`${API_BASE_URL}/auth/generate-token`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
     const data = await res.json();
-    if (data.admin_token) {
-        prompt("Token para nuevo Admin:", data.admin_token);
-    } else {
-        alert(data.msg);
-    }
+    if (data.admin_token) prompt("Token para nuevo Admin:", data.admin_token);
 }
 
 async function deleteCondo(id) {
-    if (!confirm("¿Borrar edificio?")) return;
-    await fetch(`${API_BASE_URL}/condos?id=${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-    loadAdminCondos();
+    if (!confirm("¿Borrar edificio y foto de S3?")) return;
+    const res = await fetch(`${API_BASE_URL}/condos?id=${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    if (res.ok) loadAdminCondos();
 }
 
 function copyId(id) { navigator.clipboard.writeText(id); alert("ID Copiado"); }

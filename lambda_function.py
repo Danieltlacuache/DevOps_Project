@@ -3,25 +3,25 @@ from boto3.dynamodb.conditions import Attr
 from botocore.config import Config
 
 # ==============================================================================
-# CONFIGURACIÓN DE SERVICIOS
+# CONFIGURACIÓN DE SERVICIOS (Optimizado para us-east-2)
 # ==============================================================================
 S3_CONFIG = Config(s3={'addressing_style': 'virtual'}, signature_version='s3v4')
 
 dynamodb  = boto3.resource('dynamodb', region_name='us-east-2')
 s3_client = boto3.client('s3', region_name='us-east-2', config=S3_CONFIG)
 
-# Tablas (Sincronizadas con el YAML)
-USERS_TABLE       = dynamodb.Table(os.environ.get('USERS_TABLE', 'Users'))
-RESIDENTS_TABLE   = dynamodb.Table(os.environ.get('RESIDENTS_TABLE', 'Residents'))
-ADMINS_DATA_TABLE = dynamodb.Table(os.environ.get('ADMINS_DATA_TABLE', 'Administradores'))
-CONDOS_TABLE      = dynamodb.Table(os.environ.get('CONDOS_TABLE', 'Condominios'))
-TOKENS_TABLE      = dynamodb.Table(os.environ.get('ADMIN_TOKENS_TABLE', 'AdminTokens'))
+# Referencias a tablas desde variables de entorno (template.yaml)
+USERS_TABLE       = dynamodb.Table(os.environ.get('USERS_TABLE'))
+RESIDENTS_TABLE   = dynamodb.Table(os.environ.get('RESIDENTS_TABLE'))
+ADMINS_DATA_TABLE = dynamodb.Table(os.environ.get('ADMINS_DATA_TABLE'))
+CONDOS_TABLE      = dynamodb.Table(os.environ.get('CONDOS_TABLE'))
+TOKENS_TABLE      = dynamodb.Table(os.environ.get('ADMIN_TOKENS_TABLE'))
 BUCKET_NAME       = os.environ.get('PHOTOS_BUCKET')
 
 JWT_SECRET = "secret_key_iteso_2026_final_v7" 
 
 # ==============================================================================
-# HELPERS
+# HELPERS (Centralización de respuesta y seguridad)
 # ==============================================================================
 def response(status, body):
     return {
@@ -41,7 +41,7 @@ def verify_jwt(event):
     except: return None
 
 # ==============================================================================
-# AUTH & TOKENS
+# MÓDULO 1: AUTENTICACIÓN Y ROLES
 # ==============================================================================
 def login(event):
     data = json.loads(event.get('body', '{}'))
@@ -60,6 +60,7 @@ def login(event):
 def register(event):
     data = json.loads(event.get('body', '{}'))
     email = data.get('email', '').lower().strip()
+    password = data.get('password', '')
     admin_token = data.get('admin_token')
     role = 'residente'
 
@@ -70,32 +71,29 @@ def register(event):
             TOKENS_TABLE.update_item(Key={'token': admin_token}, UpdateExpression="SET used = :u", ExpressionAttributeValues={':u': True})
         else: return response(400, {'msg': 'Token admin inválido'})
 
-    # Guardar en Users (Auth)
+    # 1. Guardar en tabla de Auth
     USERS_TABLE.put_item(Item={
         'email': email, 'role': role,
-        'password': hashlib.sha256(data.get('password', '').encode()).hexdigest()
+        'password': hashlib.sha256(password.encode()).hexdigest()
     })
 
-    # Guardar en tabla Administradores si aplica
+    # 2. Inicializar perfiles (Separación de Datos)
     if role == 'admin':
-        ADMINS_DATA_TABLE.put_item(Item={'email': email, 'creado': datetime.datetime.utcnow().isoformat()})
+        ADMINS_DATA_TABLE.put_item(Item={'email': email, 'status': 'Activo', 'creado': datetime.datetime.utcnow().isoformat()})
+    else:
+        RESIDENTS_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'email': email, 'status': 'Habilitado'})
     
-    return response(201, {'msg': f'Registrado como {role}'})
-
-def generate_token(event):
-    u = verify_jwt(event)
-    if not u or u.get('role') != 'admin': return response(403, {'msg': 'No autorizado'})
-    new_t = str(uuid.uuid4())[:8].upper()
-    TOKENS_TABLE.put_item(Item={'token': new_t, 'used': False, 'created_by': u['email']})
-    return response(200, {'admin_token': new_t})
+    return response(201, {'msg': f'Registro exitoso como {role}'})
 
 # ==============================================================================
-# GESTIÓN DE CONDOMINIOS
+# MÓDULO 2: GESTIÓN DE CONDOMINIOS (ADMIN)
 # ==============================================================================
 def req_upload(event):
     data = json.loads(event.get('body', '{}'))
     file_key = f"condos/{uuid.uuid4()}.png"
-    url = s3_client.generate_presigned_url('put_object', Params={'Bucket': BUCKET_NAME, 'Key': file_key, 'ContentType': data.get('file_type', 'image/png')}, ExpiresIn=300)
+    url = s3_client.generate_presigned_url('put_object', Params={
+        'Bucket': BUCKET_NAME, 'Key': file_key, 'ContentType': data.get('file_type', 'image/png')
+    }, ExpiresIn=300)
     return response(200, {'upload_url': url, 'file_key': file_key})
 
 def confirm_condo(event):
@@ -116,53 +114,73 @@ def delete_condo(event):
     cid = event.get('queryStringParameters', {}).get('id')
     condo = CONDOS_TABLE.get_item(Key={'id': cid}).get('Item')
     if condo:
-        try:
+        try: # Borrar imagen de S3 para optimizar almacenamiento
             key = f"condos/{condo['foto_url'].split('/')[-1]}"
             s3_client.delete_object(Bucket=BUCKET_NAME, Key=key)
         except: pass
         CONDOS_TABLE.delete_item(Key={'id': cid})
-        return response(200, {'msg': 'Eliminado'})
+        return response(200, {'msg': 'Eliminado satisfactoriamente'})
     return response(404, {'msg': 'No encontrado'})
 
+# ==============================================================================
+# MÓDULO 3: MARKETPLACE Y RESERVAS (RESIDENTE)
+# ==============================================================================
 def list_condos(event):
     u = verify_jwt(event)
     if not u: return response(401, {'msg': 'No autorizado'})
+    
     if u['role'] == 'admin':
         return response(200, CONDOS_TABLE.scan(FilterExpression=Attr('admin_owner').eq(u['email'])).get('Items', []))
     
+    # Vista para Residentes
     av = CONDOS_TABLE.scan(FilterExpression=Attr('estado').eq('Disponible')).get('Items', [])
     res_items = RESIDENTS_TABLE.scan(FilterExpression=Attr('email').eq(u['email'])).get('Items', [])
-    my = [CONDOS_TABLE.get_item(Key={'id': r['condo_id']}).get('Item') for r in res_items if CONDOS_TABLE.get_item(Key={'id': r['condo_id']}).get('Item')]
+    
+    my = []
+    for r in res_items:
+        if r.get('condo_id'):
+            c = CONDOS_TABLE.get_item(Key={'id': r['condo_id']}).get('Item')
+            if c: my.append(c)
+            
     return response(200, {'available': av, 'my_reserva': my})
 
-# ==============================================================================
-# RESERVAS
-# ==============================================================================
 def reserve_condo(event):
     u = verify_jwt(event)
     if not u: return response(401, {'msg': 'No autorizado'})
     cid = json.loads(event.get('body', '{}')).get('condo_id')
     
-    # 1. Registrar en tabla RESIDENTS
-    RESIDENTS_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'email': u['email'], 'condo_id': cid, 'fecha': datetime.datetime.utcnow().isoformat()})
+    # 1. Registrar en tabla RESIDENTS (Relación de servicio)
+    RESIDENTS_TABLE.put_item(Item={
+        'id': str(uuid.uuid4()), 'email': u['email'], 'condo_id': cid, 
+        'fecha_reserva': datetime.datetime.utcnow().isoformat()
+    })
     
-    # 2. Actualizar estado del edificio
+    # 2. Actualizar estado del activo
     CONDOS_TABLE.update_item(Key={'id': cid}, UpdateExpression="SET estado = :s", ExpressionAttributeValues={':s': 'Ocupado'})
-    return response(200, {'msg': 'Reservado'})
+    return response(200, {'msg': 'Contratación exitosa'})
 
 def cancel_reserve(event):
     u = verify_jwt(event)
     if not u: return response(401, {'msg': 'No autorizado'})
     cid = event.get('queryStringParameters', {}).get('condo_id')
     
+    # Borrar registros en Residents
     items = RESIDENTS_TABLE.scan(FilterExpression=Attr('email').eq(u['email']) & Attr('condo_id').eq(cid)).get('Items', [])
     for i in items: RESIDENTS_TABLE.delete_item(Key={'id': i['id']})
     
+    # Liberar activo
     CONDOS_TABLE.update_item(Key={'id': cid}, UpdateExpression="SET estado = :s", ExpressionAttributeValues={':s': 'Disponible'})
-    return response(200, {'msg': 'Cancelado'})
+    return response(200, {'msg': 'Servicio finalizado / Reserva cancelada'})
+
+def generate_token(event):
+    u = verify_jwt(event)
+    if not u or u.get('role') != 'admin': return response(403, {'msg': 'Acceso restringido'})
+    new_t = str(uuid.uuid4())[:8].upper()
+    TOKENS_TABLE.put_item(Item={'token': new_t, 'used': False, 'created_by': u['email']})
+    return response(200, {'admin_token': new_t})
 
 # ==============================================================================
-# HANDLER PRINCIPAL
+# ENRUTADOR (ROUTER)
 # ==============================================================================
 def lambda_handler(event, context):
     m, p = event.get('httpMethod'), event.get('path')
@@ -176,7 +194,9 @@ def lambda_handler(event, context):
     }
     
     handler = routes.get(m, {}).get(p)
-    if not handler: return response(404, {'msg': 'Ruta no encontrada'})
+    if not handler: return response(404, {'msg': 'Ruta no definida'})
     
     try: return handler(event)
-    except Exception as e: return response(500, {'error': str(e)})
+    except Exception as e: 
+        print(f"Error detectado: {str(e)}")
+        return response(500, {'error': 'Error interno del servidor'})
