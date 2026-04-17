@@ -6,6 +6,21 @@
     <title>CondoManager Pro | Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Estilos específicos para gestión */
+        .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
+        .modal-content { background: white; padding: 25px; border-radius: 16px; width: 90%; max-width: 500px; max-height: 85vh; overflow-y: auto; position: relative; }
+        
+        .unit-card { border-left: 5px solid #cbd5e1; margin-bottom: 10px; transition: 0.2s; }
+        .unit-card.disponible { border-left-color: #22c55e; background: #f0fdf4; }
+        .unit-card.ocupado { border-left-color: #ef4444; background: #fef2f2; }
+        
+        .badge-status { font-size: 0.65rem; padding: 3px 8px; border-radius: 12px; font-weight: bold; text-transform: uppercase; }
+        .status-disponible { background: #dcfce7; color: #166534; }
+        .status-ocupado { background: #fee2e2; color: #991b1b; }
+        
+        .master-card { background: linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%); color: white; border: none; }
+    </style>
 </head>
 <body>
     <header>
@@ -19,66 +34,126 @@
     </header>
 
     <main class="container">
-        <div id="super-user-controls" style="display: none; margin-bottom: 25px;">
-            <section class="card master-card" style="background: linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%); color: white; padding: 20px; border-radius: 16px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div id="super-user-controls" style="display: none; margin-bottom: 30px;">
+            <section class="card master-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
                     <div>
                         <h3 style="color: white; margin: 0;">👑 Panel Maestro</h3>
-                        <p style="color: #e2e8f0; margin: 5px 0 0 0;">Genera invitaciones para nuevos administradores.</p>
+                        <p style="color: #e2e8f0; margin: 5px 0 0 0; font-size: 0.9rem;">Genera accesos para nuevos Administradores.</p>
                     </div>
-                    <button onclick="createInviteToken()" class="btn-primary" style="width: auto; background: white; color: #6d28d9; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Generar Token</button>
+                    <button onclick="createInviteToken()" class="btn-primary" style="background: white; color: #6d28d9; font-weight: 800;">Generar Token</button>
                 </div>
             </section>
         </div>
 
         <section id="admin-section" style="display: none;">
-            <div class="bento-grid" style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
-                <div class="card">
-                    <h3>🏢 Registrar Edificio</h3>
-                    <form id="add-condo-form">
-                        <div class="input-group">
-                            <label>Nombre del Condominio</label>
-                            <input type="text" id="condo-nombre" placeholder="Ej. Torre Altura" required>
+            <div style="display: flex; flex-direction: column; gap: 30px;">
+                
+                <div class="card" style="max-width: 600px; margin: 0 auto; width: 100%;">
+                    <h3>🏢 Nuevo Edificio</h3>
+                    <form id="add-condo-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <input type="text" id="condo-nombre" placeholder="Nombre" required>
+                        <input type="text" id="condo-direccion" placeholder="Dirección" required>
+                        <div style="grid-column: span 2;">
+                            <label style="font-size: 0.8rem; color: #64748b;">Imagen Fachada:</label>
+                            <input type="file" id="condo-file" accept="image/*" required style="width: 100%;">
                         </div>
-                        <div class="input-group" style="margin-top: 15px;">
-                            <label>Dirección</label>
-                            <input type="text" id="condo-direccion" placeholder="Calle y número" required>
-                        </div>
-                        <div class="file-area" style="margin-top: 15px;">
-                            <input type="file" id="condo-file" accept="image/*" style="display: none;">
-                            <label for="condo-file" class="file-label" style="display: block; padding: 20px; border: 2px dashed #6d28d9; text-align: center; cursor: pointer; border-radius: 12px; background: #f8fafc;">📸 Seleccionar Foto</label>
-                        </div>
-                        <img id="preview" src="" style="display:none; width:100%; border-radius:12px; margin-top:15px; height: 180px; object-fit: cover; border: 1px solid #e2e8f0;">
-                        
-                        <button type="submit" class="btn-primary" style="margin-top: 20px; width: 100%;">Guardar Condominio</button>
+                        <button type="submit" class="btn-primary" style="grid-column: span 2;">Registrar Edificio</button>
                     </form>
                 </div>
 
-                <div class="card">
-                    <h3>📋 Gestión de Inventario</h3>
-                    <div id="condos-list-admin" class="grid-layout"></div>
+                <div class="card" style="width: 100%;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">📋 Gestión de Propiedades</h3>
+                        <span class="badge-status status-disponible">Panel de Control Activo</span>
+                    </div>
+                    
+                    <div id="condos-list-admin" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
+                        </div>
                 </div>
             </div>
         </section>
 
         <section id="residente-section" style="display: none;">
-            <div class="tabs-nav" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <button id="tab-market" class="tab-btn active" onclick="switchTab('market')">🛒 Marketplace</button>
+            <div class="tabs-nav">
+                <button id="tab-market" class="tab-btn active" onclick="switchTab('market')">🛒 Explorar</button>
                 <button id="tab-reservas" class="tab-btn" onclick="switchTab('reservas')">🔑 Mis Reservas</button>
             </div>
             
-            <div id="view-market" class="card">
-                <h3>Edificios Disponibles</h3>
-                <div id="available-grid" class="grid-layout" style="margin-top: 20px;"></div>
+            <div id="view-market">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 id="market-title">Edificios Disponibles</h3>
+                    <button id="btn-back-to-condos" class="btn-logout" style="display:none;" onclick="loadResidenteDashboard()">⬅ Volver</button>
+                </div>
+                <div id="available-grid" class="grid-layout"></div>
             </div>
 
-            <div id="view-reservas" class="card" style="display: none;">
-                <h3>Tu Residencia Actual</h3>
-                <div id="my-reservas-grid" class="grid-layout" style="margin-top: 20px;"></div>
+            <div id="view-reservas" style="display: none;">
+                <h3 style="margin-bottom: 20px;">Mis Unidades Reservadas</h3>
+                <div id="my-reservas-grid" class="grid-layout"></div>
             </div>
         </section>
     </main>
 
+    <div id="unit-modal" class="modal">
+        <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0;">Unidades en <span id="modal-condo-name" style="color:#6d28d9;"></span></h3>
+                <button onclick="closeModal('unit-modal')" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <div id="units-container">
+                </div>
+        </div>
+    </div>
+
+    <div id="add-unit-modal" class="modal">
+        <div class="modal-content">
+            <h3>Añadir Unidad a <span id="modal-condo-unit-name"></span></h3>
+            <form id="add-unit-form">
+                <input type="hidden" id="modal-condo-id">
+                <input type="text" id="unit-nombre" placeholder="Nombre (Ej: Depto 101)" required>
+                <input type="number" id="unit-precio" placeholder="Precio" required style="margin-top:10px;">
+                <label style="display:block; margin-top:10px; font-size:0.8rem; color:#64748b;">Foto Interior:</label>
+                <input type="file" id="unit-file" accept="image/*" required>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button type="submit" class="btn-primary" style="flex:1;">Guardar</button>
+                    <button type="button" onclick="closeModal('add-unit-modal')" style="flex:1; border:none; background:#e2e8f0; border-radius:8px;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="reserve-modal" class="modal">
+        <div class="modal-content">
+            <h3>Reservar <span id="reserve-unit-name" style="color:#2563eb;"></span></h3>
+            <form id="reserve-form">
+                <input type="hidden" id="reserve-unit-id">
+                <input type="hidden" id="reserve-unit-price">
+                
+                <div style="display:flex; gap:15px; margin-top:15px;">
+                    <div style="flex:1;">
+                        <label style="font-size:0.85rem; color:#64748b; font-weight:bold;">Fecha de Entrada:</label>
+                        <input type="date" id="reserve-start" required style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:0.85rem; color:#64748b; font-weight:bold;">Fecha de Salida:</label>
+                        <input type="date" id="reserve-end" required style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px; padding: 20px; background: #f8fafc; border-radius: 8px; text-align: center; border: 1px dashed #cbd5e1;">
+                    <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Costo Total Estimado</p>
+                    <h2 id="reserve-total-display" style="margin: 5px 0 0 0; color: #2563eb; font-size: 2rem;">$0.00</h2>
+                </div>
+
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button type="submit" class="btn-primary" style="flex:1;" id="btn-confirm-reserve" disabled>Confirmar Reserva</button>
+                    <button type="button" onclick="closeModal('reserve-modal')" style="flex:1; border:none; background:#e2e8f0; border-radius:8px;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <script src="dashboard.js"></script>
 </body>
 </html>
