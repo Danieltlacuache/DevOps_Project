@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://hpqvi22yyd.execute-api.us-east-2.amazonaws.com/Prod';
+const API_BASE_URL = 'https://lbhl4mazt9.execute-api.us-east-2.amazonaws.com/Prod/';
 
 /**
  * Muestra mensajes de feedback al usuario (éxito o error)

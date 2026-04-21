@@ -1,12 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: CondoManager Pro - Gestion de Condominios en AWS
+Description: CondoManager Pro - Infraestructura Escalable con CDN y Observabilidad
 
 Globals:
   Function:
     Timeout: 30
     MemorySize: 512
     Runtime: python3.10
+    Tracing: Active # APLICACIÓN OBSERVABILIDAD: Activa X-Ray
     Environment:
       Variables:
         USERS_TABLE: !Ref UsersTable
@@ -18,43 +19,147 @@ Globals:
         PHOTOS_BUCKET: !Ref CondoPhotosBucket
         SECRET_ID: "CondoManager/JWT_Secret"
         WEBSOCKET_URL: !Sub "https://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+        CDN_DOMAIN: !GetAtt CondoCloudFrontDistribution.DomainName
 
 Resources:
   # ==============================================================================
-  # 1. FUNCIÓN LAMBDA (PROCESADOR CENTRAL)
+  # 1. API GATEWAY CON METRICAS, TRACING Y CORS
+  # ==============================================================================
+  CondoRestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      TracingEnabled: true
+      Cors:
+        AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+      MethodSettings:
+        - MetricsEnabled: true
+          ResourcePath: "/*"
+          HttpMethod: "*"
+
+  # ==============================================================================
+  # 2. FUNCIÓN LAMBDA CENTRAL
   # ==============================================================================
   CondoManagerFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: .
       Handler: lambda_function.lambda_handler
+      Policies:
+        - AWSLambdaVPCAccessExecutionRole
+        - AmazonDynamoDBFullAccess
+        - AmazonS3FullAccess
+        - SecretsManagerReadWrite
+        - AWSStepFunctionsFullAccess
+        - AmazonAPIGatewayInvokeFullAccess # Permiso crucial para WebSockets
+        - "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
       Events:
-        # Proxy Any permite que la Lambda maneje todas las rutas (/config, /condos, etc.)
         CondoApi:
           Type: Api
           Properties:
+            RestApiId: !Ref CondoRestApi
             Path: /{proxy+}
             Method: ANY
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref ResidentsTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref CondosTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref UnitsTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref AdminTokensTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
-        - S3CrudPolicy: { BucketName: !Ref CondoPhotosBucket }
-        # Política para leer el secreto del JWT
-        - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CondoManager/JWT_Secret-*"
-        # Permiso para enviar mensajes push vía WebSockets
-        - Statement:
-            - Effect: Allow
-              Action:
-                - 'execute-api:ManageConnections'
-              Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CondoWebSocketApi}/*'
 
   # ==============================================================================
-  # 2. API GATEWAY WEBSOCKET (TIEMPO REAL)
+  # 3. BASE DE DATOS (DYNAMODB) CON JERARQUÍA
+  # ==============================================================================
+  UsersTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey: { Name: email, Type: String }
+
+  CondosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: popularidad
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: PopularityIndex
+          KeySchema:
+            - AttributeName: popularidad
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  UnitsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey: { Name: id, Type: String }
+
+  ResidentsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey: { Name: id, Type: String }
+
+  AdminTokensTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey: { Name: token, Type: String }
+
+  ConnectionsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey: { Name: connectionId, Type: String }
+
+  # ==============================================================================
+  # 4. CDN Y ALMACENAMIENTO (S3 + CLOUDFRONT)
+  # ==============================================================================
+  CondoPhotosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, DELETE]
+            AllowedOrigins: ['*']
+
+  CondoPhotosBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CondoPhotosBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: 's3:GetObject'
+            Resource: !Sub 'arn:aws:s3:::${CondoPhotosBucket}/*'
+            Principal: '*'
+
+  CondoCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: "CDN para fotos de CondoManager Pro"
+        Origins:
+          - DomainName: !GetAtt CondoPhotosBucket.DomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+
+  # ==============================================================================
+  # 5. WEBSOCKET API (TIEMPO REAL)
   # ==============================================================================
   CondoWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
@@ -105,72 +210,10 @@ Resources:
       FunctionName: !Ref CondoManagerFunction
       Principal: apigateway.amazonaws.com
 
-  # ==============================================================================
-  # 3. BASES DE DATOS (DYNAMODB)
-  # ==============================================================================
-  UsersTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: email, Type: String }
-
-  ResidentsTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
-
-  CondosTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
-
-  UnitsTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
-
-  AdminTokensTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: token, Type: String }
-
-  ConnectionsTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: connectionId, Type: String }
-
-  # ==============================================================================
-  # 4. ALMACENAMIENTO (S3)
-  # ==============================================================================
-  CondoPhotosBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-      CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders: ['*']
-            AllowedMethods: [GET, PUT, POST, DELETE]
-            AllowedOrigins: ['*']
-
-  CondoPhotosBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref CondoPhotosBucket
-      PolicyDocument:
-        Statement:
-          - Effect: Allow
-            Action: 's3:GetObject'
-            Resource: !Sub 'arn:aws:s3:::${CondoPhotosBucket}/*'
-            Principal: '*'
-
-# ==============================================================================
-# 5. SALIDAS (URLS PARA EL FRONTEND)
-# ==============================================================================
 Outputs:
   ApiUrl:
     Description: "URL de la API REST"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
-  WebSocketUrl:
-    Description: "URL del WebSocket"
-    Value: !Sub "wss://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+    Value: !Sub "https://${CondoRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  CDNUrl:
+    Description: "Dominio de la CDN (CloudFront)"
+    Value: !GetAtt CondoCloudFrontDistribution.DomainName

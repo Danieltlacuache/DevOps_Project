@@ -7,19 +7,31 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <style>
-        /* Estilos específicos para gestión */
+        /* Estilos generales de modales y tarjetas */
         .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
-        .modal-content { background: white; padding: 25px; border-radius: 16px; width: 90%; max-width: 500px; max-height: 85vh; overflow-y: auto; position: relative; }
         
-        .unit-card { border-left: 5px solid #cbd5e1; margin-bottom: 10px; transition: 0.2s; }
+        .modal-content { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 16px; 
+            width: 90%; 
+            max-width: 650px; /* Modal ancho para comodidad de datos */
+            max-height: 85vh; 
+            overflow-y: auto; 
+            position: relative; 
+        }
+
+        .unit-card { border-left: 5px solid #cbd5e1; margin-bottom: 10px; transition: 0.2s; padding: 15px; border-radius: 8px; }
         .unit-card.disponible { border-left-color: #22c55e; background: #f0fdf4; }
         .unit-card.ocupado { border-left-color: #ef4444; background: #fef2f2; }
-        
+
         .badge-status { font-size: 0.65rem; padding: 3px 8px; border-radius: 12px; font-weight: bold; text-transform: uppercase; }
         .status-disponible { background: #dcfce7; color: #166534; }
         .status-ocupado { background: #fee2e2; color: #991b1b; }
         
         .master-card { background: linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%); color: white; border: none; }
+        
+        .nav-glass { backdrop-filter: blur(10px); background: rgba(255, 255, 255, 0.8); border-bottom: 1px solid #e2e8f0; }
     </style>
 </head>
 <body>
@@ -48,7 +60,6 @@
 
         <section id="admin-section" style="display: none;">
             <div style="display: flex; flex-direction: column; gap: 30px;">
-                
                 <div class="card" style="max-width: 600px; margin: 0 auto; width: 100%;">
                     <h3>🏢 Nuevo Edificio</h3>
                     <form id="add-condo-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -65,11 +76,9 @@
                 <div class="card" style="width: 100%;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <h3 style="margin: 0;">📋 Gestión de Propiedades</h3>
-                        <span class="badge-status status-disponible">Panel de Control Activo</span>
+                        <span class="badge-status status-disponible">Panel Activo</span>
                     </div>
-                    
-                    <div id="condos-list-admin" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
-                        </div>
+                    <div id="condos-list-admin" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;"></div>
                 </div>
             </div>
         </section>
@@ -90,19 +99,18 @@
 
             <div id="view-reservas" style="display: none;">
                 <h3 style="margin-bottom: 20px;">Mis Unidades Reservadas</h3>
-                <div id="my-reservas-grid" class="grid-layout"></div>
+                <div id="my-reservas-grid"></div> 
             </div>
         </section>
     </main>
 
     <div id="unit-modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 750px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                 <h3 style="margin:0;">Unidades en <span id="modal-condo-name" style="color:#6d28d9;"></span></h3>
                 <button onclick="closeModal('unit-modal')" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">&times;</button>
             </div>
-            <div id="units-container">
-                </div>
+            <div id="units-container"></div>
         </div>
     </div>
 
@@ -112,7 +120,7 @@
             <form id="add-unit-form">
                 <input type="hidden" id="modal-condo-id">
                 <input type="text" id="unit-nombre" placeholder="Nombre (Ej: Depto 101)" required>
-                <input type="number" id="unit-precio" placeholder="Precio" required style="margin-top:10px;">
+                <input type="number" id="unit-precio" placeholder="Precio por Día" required style="margin-top:10px;">
                 <label style="display:block; margin-top:10px; font-size:0.8rem; color:#64748b;">Foto Interior:</label>
                 <input type="file" id="unit-file" accept="image/*" required>
                 <div style="display:flex; gap:10px; margin-top:20px;">
@@ -132,28 +140,37 @@
                 
                 <div style="display:flex; gap:15px; margin-top:15px;">
                     <div style="flex:1;">
-                        <label style="font-size:0.85rem; color:#64748b; font-weight:bold;">Fecha de Entrada:</label>
-                        <input type="date" id="reserve-start" required style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+                        <label style="font-size:0.85rem; color:#64748b; font-weight:bold;">Entrada (Fecha y Hora):</label>
+                        <input type="datetime-local" step="1" id="reserve-start" required style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
                     </div>
                     <div style="flex:1;">
-                        <label style="font-size:0.85rem; color:#64748b; font-weight:bold;">Fecha de Salida:</label>
-                        <input type="date" id="reserve-end" required style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+                        <label style="font-size:0.85rem; color:#64748b; font-weight:bold;">Salida (Fecha y Hora):</label>
+                        <input type="datetime-local" step="1" id="reserve-end" required style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px; padding: 15px; background: #f1f5f9; border-radius: 8px; border: 1px solid #cbd5e1;">
+                    <h4 style="margin: 0 0 10px 0; color: #334155; font-size: 0.9rem;">💳 Pasarela de Pago Segura</h4>
+                    <input type="text" id="pay-card" placeholder="Número de Tarjeta (16 dígitos)" maxlength="16" required style="width:100%; padding:10px; margin-bottom:10px; border-radius:8px; border:1px solid #cbd5e1;">
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="pay-exp" placeholder="MM/YY" maxlength="5" required style="width:50%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
+                        <input type="password" id="pay-cvv" placeholder="CVV" maxlength="4" required style="width:50%; padding:10px; border-radius:8px; border:1px solid #cbd5e1;">
                     </div>
                 </div>
                 
-                <div style="margin-top: 20px; padding: 20px; background: #f8fafc; border-radius: 8px; text-align: center; border: 1px dashed #cbd5e1;">
-                    <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Costo Total Estimado</p>
-                    <h2 id="reserve-total-display" style="margin: 5px 0 0 0; color: #2563eb; font-size: 2rem;">$0.00</h2>
+                <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; text-align: center; border: 1px dashed #cbd5e1;">
+                    <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Total a Cargar</p>
+                    <h2 id="reserve-total-display" style="margin: 5px 0 0 0; color: #2563eb; font-size: 2.2rem;">$0.00</h2>
                 </div>
 
                 <div style="display:flex; gap:10px; margin-top:20px;">
-                    <button type="submit" class="btn-primary" style="flex:1;" id="btn-confirm-reserve" disabled>Confirmar Reserva</button>
+                    <button type="submit" class="btn-primary" style="flex:1; padding: 15px;" id="btn-confirm-reserve" disabled>Pagar y Confirmar</button>
                     <button type="button" onclick="closeModal('reserve-modal')" style="flex:1; border:none; background:#e2e8f0; border-radius:8px;">Cancelar</button>
                 </div>
             </form>
         </div>
     </div>
-    
+
     <script src="dashboard.js"></script>
 </body>
 </html>

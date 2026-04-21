@@ -16,12 +16,10 @@ def get_jwt_secret():
         res = client.get_secret_value(SecretId=os.environ.get('SECRET_ID', 'CondoManager/JWT_Secret'))
         return json.loads(res['SecretString'])['JWT_KEY']
     except Exception as e:
-        print(f"Error SecretsManager: {str(e)}")
         return "secret_key_iteso_2026_fallback"
 
 JWT_SECRET = get_jwt_secret()
 
-# Tablas conectadas al template.yaml
 USERS_TABLE       = dynamodb.Table(os.environ.get('USERS_TABLE'))
 RESIDENTS_TABLE   = dynamodb.Table(os.environ.get('RESIDENTS_TABLE'))
 CONDOS_TABLE      = dynamodb.Table(os.environ.get('CONDOS_TABLE'))
@@ -29,21 +27,17 @@ UNITS_TABLE       = dynamodb.Table(os.environ.get('UNITS_TABLE'))
 TOKENS_TABLE      = dynamodb.Table(os.environ.get('ADMIN_TOKENS_TABLE'))
 CONNECTIONS_TABLE = dynamodb.Table(os.environ.get('CONNECTIONS_TABLE'))
 BUCKET_NAME       = os.environ.get('PHOTOS_BUCKET')
+CDN_DOMAIN        = os.environ.get('CDN_DOMAIN', f"{BUCKET_NAME}.s3.us-east-2.amazonaws.com")
 
 WS_ENDPOINT = os.environ.get('WEBSOCKET_URL', '').replace('wss://', 'https://')
 ws_management = boto3.client('apigatewaymanagementapi', endpoint_url=WS_ENDPOINT)
 
 # ==============================================================================
-# 2. HELPERS (Respuestas, Tokens y Notificaciones)
+# 2. HELPERS Y LIMPIEZA AUTOMÁTICA
 # ==============================================================================
 def response(status, body):
     return {
-        'statusCode': status,
-        'headers': {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': '*',
-            'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,OPTIONS'
-        },
+        'statusCode': status, 'headers': { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,OPTIONS' },
         'body': json.dumps(body, default=str)
     }
 
@@ -57,217 +51,147 @@ def notify_clients(payload):
     try:
         conns = CONNECTIONS_TABLE.scan(ProjectionExpression="connectionId").get('Items', [])
         for c in conns:
-            try:
-                ws_management.post_to_connection(ConnectionId=c['connectionId'], Data=json.dumps(payload, default=str))
-            except:
-                CONNECTIONS_TABLE.delete_item(Key={'connectionId': c['connectionId']})
+            try: ws_management.post_to_connection(ConnectionId=c['connectionId'], Data=json.dumps(payload, default=str))
+            except: CONNECTIONS_TABLE.delete_item(Key={'connectionId': c['connectionId']})
     except Exception as e: print(f"WS Sync Error: {str(e)}")
 
-# ==============================================================================
-# 3. MÓDULO DE AUTENTICACIÓN Y REGISTRO
-# ==============================================================================
-def register_user(event):
-    data = json.loads(event.get('body', '{}'))
-    email = data.get('email', '').lower().strip()
-    password = data.get('password')
-    admin_token = data.get('admin_token')
-    
-    role = 'residente'
-    
-    if admin_token:
-        tk_item = TOKENS_TABLE.get_item(Key={'token': admin_token}).get('Item')
-        if tk_item and not tk_item.get('used', False):
-            role = 'admin'
-            TOKENS_TABLE.update_item(
-                Key={'token': admin_token}, 
-                UpdateExpression="SET used = :u", 
-                ExpressionAttributeValues={':u': True}
+def clean_expired_reservations():
+    now_utc = datetime.datetime.utcnow().isoformat()
+    occupied = UNITS_TABLE.scan(FilterExpression=Attr('estado').eq('Ocupado')).get('Items', [])
+    for u in occupied:
+        if u.get('fecha_fin') and u.get('fecha_fin') <= now_utc:
+            UNITS_TABLE.update_item(
+                Key={'id': u['id']},
+                UpdateExpression="SET estado = :s, ocupado_por = :empty, fecha_inicio = :empty, fecha_fin = :empty",
+                ExpressionAttributeValues={':s': 'Disponible', ':empty': ''}
             )
-        else:
-            return response(400, {'msg': 'Token maestro inválido o ya utilizado'})
+            notify_clients({'action': 'REFRESH_UNITS', 'condo_id': u.get('condo_id')})
 
-    hashed_pw = hashlib.sha256(password.encode()).hexdigest()
-    try:
-        USERS_TABLE.put_item(
-            Item={'email': email, 'password': hashed_pw, 'role': role},
-            ConditionExpression='attribute_not_exists(email)'
-        )
-        return response(201, {'msg': 'Usuario registrado', 'role': role})
-    except:
-        return response(400, {'msg': 'El usuario ya existe'})
-
+# ==============================================================================
+# 3. LÓGICA DE NEGOCIO
+# ==============================================================================
 def login(event):
     data = json.loads(event.get('body', '{}'))
-    email = data.get('email', '').lower().strip()
-    user = USERS_TABLE.get_item(Key={'email': email}).get('Item')
-    
-    if not user:
-        return response(401, {'msg': 'Credenciales incorrectas'})
-        
-    hashed = hashlib.sha256(data.get('password', '').encode()).hexdigest()
-    if user['password'] == hashed:
+    user = USERS_TABLE.get_item(Key={'email': data.get('email', '').lower().strip()}, ConsistentRead=True).get('Item')
+    if not user: return response(401, {'msg': 'Credenciales incorrectas'})
+    if user['password'] == hashlib.sha256(data.get('password', '').encode()).hexdigest():
         payload = {'email': user['email'], 'role': user['role'], 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=5)}
         return response(200, {'token': jwt.encode(payload, JWT_SECRET, algorithm='HS256')})
-    
     return response(401, {'msg': 'Credenciales incorrectas'})
 
-# ==============================================================================
-# 4. MÓDULO DE NEGOCIO (UNIDADES CON FILTRO INFALIBLE)
-# ==============================================================================
 def list_units(event, user):
-    cid = event.get('queryStringParameters', {}).get('condo_id')
+    clean_expired_reservations() 
     
+    cid = event.get('queryStringParameters', {}).get('condo_id')
     if cid:
-        filter_expr = Attr('condo_id').eq(cid)
-        items = UNITS_TABLE.scan(FilterExpression=filter_expr).get('Items', [])
+        if user.get('role') == 'residente':
+            CONDOS_TABLE.update_item(Key={'id': cid}, UpdateExpression="ADD popularidad :inc", ExpressionAttributeValues={':inc': 1})
+        items = UNITS_TABLE.scan(FilterExpression=Attr('condo_id').eq(cid)).get('Items', [])
     else:
         items = UNITS_TABLE.scan().get('Items', [])
     
     if user.get('role') == 'residente':
-        filtered_items = []
-        for u in items:
-            estado = str(u.get('estado', '')).strip().lower()
-            bl = u.get('borrado_logico')
-            is_deleted = str(bl).lower() in ['true', '1', 't'] if bl is not None else False
-            
-            if estado == 'disponible' and not is_deleted:
-                filtered_items.append(u)
-                
-        return response(200, filtered_items)
-    
+        return response(200, [u for u in items if str(u.get('estado', '')).strip().lower() == 'disponible' and not (str(u.get('borrado_logico')).lower() in ['true', '1', 't'])])
     return response(200, items)
 
-def update_unit_status(event, user):
-    if user.get('role') != 'admin': return response(403, {'msg': 'No autorizado'})
-    
-    data = json.loads(event.get('body', '{}'))
-    is_deleted = True if data.get('action') == 'delete' else False
-    
-    UNITS_TABLE.update_item(
-        Key={'id': data['id']},
-        UpdateExpression="SET borrado_logico = :b",
-        ExpressionAttributeValues={':b': is_deleted}
-    )
-    notify_clients({'action': 'REFRESH_UNITS', 'condo_id': data.get('condo_id')})
-    return response(200, {'msg': 'Estado actualizado'})
-
 # ==============================================================================
-# 5. HANDLER PRINCIPAL (ROUTER)
+# 4. HANDLER PRINCIPAL
 # ==============================================================================
 def lambda_handler(event, context):
-    # --- Ruteo de WebSockets ---
     rk = event.get('requestContext', {}).get('routeKey')
     if rk:
-        cid = event['requestContext']['connectionId']
-        if rk == '$connect': CONNECTIONS_TABLE.put_item(Item={'connectionId': cid})
-        elif rk == '$disconnect': CONNECTIONS_TABLE.delete_item(Key={'connectionId': cid})
+        if rk == '$connect': CONNECTIONS_TABLE.put_item(Item={'connectionId': event['requestContext']['connectionId']})
+        elif rk == '$disconnect': CONNECTIONS_TABLE.delete_item(Key={'connectionId': event['requestContext']['connectionId']})
         return {'statusCode': 200}
 
-    # --- Limpieza de Ruta REST ---
-    m = event.get('httpMethod')
-    p = event.get('path', '').replace('/Prod', '')
+    m, p = event.get('httpMethod'), event.get('path', '').replace('/Prod', '')
     if not p.startswith('/'): p = '/' + p
-    
-    # --- Rutas Públicas ---
     if m == 'OPTIONS': return response(200, {})
-    if p == '/auth/register' and m == 'POST': return register_user(event)
+    
+    if p == '/auth/register' and m == 'POST': 
+        data = json.loads(event.get('body', '{}'))
+        role = 'residente'
+        if data.get('admin_token'):
+            tk = TOKENS_TABLE.get_item(Key={'token': data['admin_token']}).get('Item')
+            if tk and not tk.get('used'):
+                role = 'admin'
+                TOKENS_TABLE.update_item(Key={'token': data['admin_token']}, UpdateExpression="SET used = :u", ExpressionAttributeValues={':u': True})
+            else: return response(400, {'msg': 'Token Maestro inválido o en uso.'})
+        try:
+            USERS_TABLE.put_item(Item={'email': data['email'].lower(), 'password': hashlib.sha256(data['password'].encode()).hexdigest(), 'role': role}, ConditionExpression='attribute_not_exists(email)')
+            return response(201, {'msg': 'Registrado', 'role': role})
+        except: return response(400, {'msg': 'Correo registrado.'})
+
     if p == '/auth/login' and m == 'POST': return login(event)
-    if p == '/config': return response(200, {'ws_url': os.environ.get('WEBSOCKET_URL')})
+    if p == '/config': return response(200, {'ws_url': os.environ.get('WEBSOCKET_URL', '').replace('https://', 'wss://')})
 
-    # --- Verificación de Token ---
     user = verify_jwt(event)
-    if not user: return response(401, {'msg': 'Token requerido o expirado'})
+    if not user: return response(401, {'msg': 'Token inválido'})
 
-    # --- RUTA NUEVA: GENERAR TOKEN MAESTRO (SUPER ADMIN) ---
     if p == '/admin/token' and m == 'POST':
-        if user.get('role') != 'admin':
-            return response(403, {'msg': 'Solo administradores pueden crear llaves maestras'})
-            
+        if user.get('role') != 'admin': return response(403, {'msg': 'No autorizado'})
         nuevo_token = "ADMIN-" + str(uuid.uuid4())[:8].upper()
-        
-        TOKENS_TABLE.put_item(Item={
-            'token': nuevo_token, 
-            'used': False, 
-            'creado_por': user.get('email'),
-            'fecha': datetime.datetime.utcnow().isoformat()
-        })
-        
+        TOKENS_TABLE.put_item(Item={'token': nuevo_token, 'used': False})
         return response(201, {'token': nuevo_token})
 
-    # --- Rutas Protegidas de Negocio ---
     if p == '/condos':
         if m == 'GET':
             items = CONDOS_TABLE.scan().get('Items', [])
-            rol_usuario = user.get('role', 'residente')
-            correo_usuario = user.get('email', '')
-            
-            if rol_usuario == 'admin':
-                mis_condos = [c for c in items if c.get('admin_owner') == correo_usuario]
-                return response(200, mis_condos)
-            else:
-                return response(200, items)
-                
+            return response(200, sorted(items, key=lambda x: x.get('popularidad', 0), reverse=True)) if user.get('role') == 'residente' else response(200, [c for c in items if c.get('admin_owner') == user['email']])
         if m == 'POST': 
             key = f"uploads/{uuid.uuid4()}.png"
-            url = s3_client.generate_presigned_url('put_object', Params={'Bucket': BUCKET_NAME, 'Key': key, 'ContentType': 'image/png'}, ExpiresIn=300)
-            return response(200, {'upload_url': url, 'file_key': key})
-            
+            return response(200, {'upload_url': s3_client.generate_presigned_url('put_object', Params={'Bucket': BUCKET_NAME, 'Key': key, 'ContentType': 'image/png'}, ExpiresIn=300), 'file_key': key})
         if m == 'PUT': 
             data = json.loads(event['body'])
-            item = {'id': str(uuid.uuid4()), 'admin_owner': user['email'], 'nombre': data['nombre'], 'direccion': data['direccion'], 'foto_url': f"https://{BUCKET_NAME}.s3.us-east-2.amazonaws.com/{data['file_key']}"}
+            item = {'id': str(uuid.uuid4()), 'admin_owner': user['email'], 'nombre': data['nombre'], 'direccion': data['direccion'], 'popularidad': 0, 'foto_url': f"https://{CDN_DOMAIN}/{data['file_key']}"}
             CONDOS_TABLE.put_item(Item=item)
-            notify_clients({'action': 'REFRESH'})
+            notify_clients({'action': 'REFRESH'}) 
             return response(201, item)
 
     if p == '/units':
         if m == 'GET': return list_units(event, user)
-        if m == 'PATCH': return update_unit_status(event, user)
+        if m == 'PATCH':
+            data = json.loads(event['body'])
+            UNITS_TABLE.update_item(Key={'id': data['id']}, UpdateExpression="SET borrado_logico = :b", ExpressionAttributeValues={':b': data['action'] == 'delete'})
+            notify_clients({'action': 'REFRESH_UNITS', 'condo_id': data.get('condo_id')}) 
+            return response(200, {'msg': 'OK'})
         if m == 'POST':
             data = json.loads(event['body'])
-            unit = {
-                'id': str(uuid.uuid4()), 'condo_id': data['condo_id'], 'nombre': data['nombre'], 
-                'precio': Decimal(str(data['precio'])), 'estado': 'Disponible', 'borrado_logico': False,
-                'foto_url': f"https://{BUCKET_NAME}.s3.us-east-2.amazonaws.com/{data['file_key']}"
-            }
+            unit = {'id': str(uuid.uuid4()), 'condo_id': data['condo_id'], 'nombre': data['nombre'], 'precio': Decimal(str(data['precio'])), 'estado': 'Disponible', 'borrado_logico': False, 'foto_url': f"https://{CDN_DOMAIN}/{data['file_key']}"}
             UNITS_TABLE.put_item(Item=unit)
-            notify_clients({'action': 'REFRESH_UNITS', 'condo_id': data['condo_id']})
+            notify_clients({'action': 'REFRESH_UNITS', 'condo_id': data['condo_id']}) 
             return response(201, unit)
 
     if p == '/units/reserve' and m == 'PUT':
         data = json.loads(event['body'])
-        f_inicio = data.get('fecha_inicio', '')
-        f_fin = data.get('fecha_fin', '')
-        total_pagar = Decimal(str(data['total']))
-        
-        # Guardamos la reserva en la tabla del residente
-        RESIDENTS_TABLE.put_item(Item={
-            'id': str(uuid.uuid4()), 
-            'email': user['email'], 
-            'unit_id': data['unit_id'], 
-            'total': total_pagar, 
-            'fecha_inicio': f_inicio,
-            'fecha_fin': f_fin,
-            'fecha': datetime.datetime.utcnow().isoformat()
-        })
-        
-        # Actualizamos la unidad para que el admin sepa quién y cuándo
-        UNITS_TABLE.update_item(
-            Key={'id': data['unit_id']}, 
-            UpdateExpression="SET estado = :s, ocupado_por = :u, fecha_inicio = :fi, fecha_fin = :ff", 
-            ExpressionAttributeValues={
-                ':s': 'Ocupado', 
-                ':u': user['email'],
-                ':fi': f_inicio,
-                ':ff': f_fin
-            }
-        )
-        
-        notify_clients({'action': 'REFRESH_UNITS', 'condo_id': data.get('condo_id')})
+        tarjeta = str(data.get('tarjeta', ''))
+        if len(tarjeta) < 16:
+            return response(400, {'msg': 'Pago declinado. Tarjeta inválida.'})
+
+        RESIDENTS_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'email': user['email'], 'unit_id': data['unit_id'], 'total': Decimal(str(data['total'])), 'fecha_inicio': data['fecha_inicio'], 'fecha_fin': data['fecha_fin'], 'fecha': datetime.datetime.utcnow().isoformat()})
+        UNITS_TABLE.update_item(Key={'id': data['unit_id']}, UpdateExpression="SET estado = :s, ocupado_por = :u, fecha_inicio = :fi, fecha_fin = :ff", ExpressionAttributeValues={':s': 'Ocupado', ':u': user['email'], ':fi': data['fecha_inicio'], ':ff': data['fecha_fin']})
+        notify_clients({'action': 'REFRESH_UNITS', 'condo_id': data.get('condo_id')}) 
         return response(200, {'msg': 'Reserva confirmada'})
 
     if p == '/units/my-reservations' and m == 'GET':
-        res = RESIDENTS_TABLE.scan(FilterExpression=Attr('email').eq(user.get('email'))).get('Items', [])
-        for r in res: r['unit_details'] = UNITS_TABLE.get_item(Key={'id': r['unit_id']}).get('Item', {})
-        return response(200, res)
+        clean_expired_reservations() 
+        now_utc = datetime.datetime.utcnow().isoformat()
+        res = RESIDENTS_TABLE.scan(FilterExpression=Attr('email').eq(user['email'])).get('Items', [])
+        
+        activas = []
+        for r in res:
+            fecha_fin = r.get('fecha_fin')
+            if fecha_fin and str(fecha_fin) > now_utc:
+                # Obtenemos la unidad
+                unit = UNITS_TABLE.get_item(Key={'id': r['unit_id']}).get('Item', {})
+                if unit:
+                    # NUEVO: Obtenemos también el nombre del condominio
+                    condo = CONDOS_TABLE.get_item(Key={'id': unit['condo_id']}).get('Item', {})
+                    unit['condo_name'] = condo.get('nombre', 'Condominio')
+                
+                r['unit_details'] = unit
+                activas.append(r)
+                
+        return response(200, activas)
 
     return response(404, {'msg': f'Ruta {p} no encontrada'})

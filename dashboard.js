@@ -1,7 +1,7 @@
 // ==============================================================================
 // 1. CONFIGURACIÓN Y ESTADO GLOBAL
 // ==============================================================================
-const AWS_PROD_URL = 'https://hpqvi22yyd.execute-api.us-east-2.amazonaws.com/Prod';
+const AWS_PROD_URL = 'https://lbhl4mazt9.execute-api.us-east-2.amazonaws.com/Prod/';
 
 const getBaseUrl = () => {
     const origin = window.location.origin;
@@ -37,14 +37,7 @@ async function loadResidenteDashboard() {
 
     try {
         const res = await fetch(`${API_BASE_URL}/condos`, { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!res.ok) throw new Error(`Error del servidor: ${res.status}`);
         const condos = await res.json();
-
-        if (condos.length === 0) {
-            grid.innerHTML = '<p style="text-align:center; width:100%;">No hay edificios registrados en el sistema.</p>';
-            return;
-        }
-
         grid.innerHTML = condos.map(c => `
             <div class="card" onclick="exploreUnits('${c.id}', '${c.nombre}')" style="cursor:pointer; padding:0; overflow:hidden;">
                 <img src="${c.foto_url}" style="width:100%; height:150px; object-fit:cover;">
@@ -53,8 +46,8 @@ async function loadResidenteDashboard() {
                     <p style="color:#64748b; font-size:0.8rem; margin-top:5px;">📍 ${c.direccion}</p>
                 </div>
             </div>
-        `).join('');
-    } catch (e) { grid.innerHTML = `<p style="color:#ef4444; text-align:center; width:100%;">Error de conexión: ${e.message}</p>`; }
+        `).join('') || '<p style="text-align:center; width:100%;">No hay edificios.</p>';
+    } catch (e) { grid.innerHTML = `<p style="color:red; text-align:center; width:100%;">Error de conexión.</p>`; }
 }
 
 async function exploreUnits(condoId, condoName) {
@@ -63,154 +56,140 @@ async function exploreUnits(condoId, condoName) {
     const btnBack = document.getElementById('btn-back-to-condos');
     const grid = document.getElementById('available-grid');
     
-    if(title && condoName) title.textContent = `Unidades en ${condoName}`;
+    if(title) title.textContent = `Unidades en ${condoName}`;
     if(btnBack) btnBack.style.display = 'block';
-
-    grid.innerHTML = '<p style="text-align:center; width:100%; color:#64748b;">Cargando unidades disponibles...</p>';
+    grid.innerHTML = '<p style="text-align:center; width:100%; color:#64748b;">Cargando...</p>';
 
     try {
         const res = await fetch(`${API_BASE_URL}/units?condo_id=${condoId}`, { headers: { 'Authorization': `Bearer ${token}` } });
         const units = await res.json();
-
-        if (units.length === 0) {
-            grid.innerHTML = `<div style="text-align:center; width:100%; padding: 40px; background: #f8fafc; border-radius: 8px;">
-                                <h3>No hay unidades disponibles</h3>
-                              </div>`;
-            return;
-        }
-        
         grid.innerHTML = units.map(u => `
             <div class="card" style="padding:10px;">
                 <img src="${u.foto_url}" style="width:100%; height:120px; object-fit:cover; border-radius:8px;">
                 <div style="padding:10px 5px;">
-                    <h5 style="margin:0; font-size: 1.1rem;">${u.nombre}</h5>
-                    <p style="font-weight:bold; color:#2563eb; font-size:1.2rem; margin:8px 0;">$${u.precio} <span style="font-size:0.8rem; color:#64748b; font-weight:normal;">/ noche</span></p>
+                    <h5 style="margin:0;">${u.nombre}</h5>
+                    <p style="font-weight:bold; color:#2563eb; font-size:1.2rem; margin:8px 0;">$${u.precio} <span style="font-size:0.8rem; color:#64748b; font-weight:normal;">/ día</span></p>
                     <button onclick="openReserveModal('${u.id}', '${u.nombre}', ${u.precio})" class="btn-primary" style="width:100%;">Reservar</button>
                 </div>
             </div>
-        `).join('');
-    } catch (e) { grid.innerHTML = '<p style="color:red; text-align:center; width:100%;">Error al conectar con la base de datos.</p>'; }
+        `).join('') || '<p style="text-align:center; width:100%;">No hay unidades disponibles.</p>';
+    } catch (e) { grid.innerHTML = '<p style="color:red;">Error.</p>'; }
 }
 
 async function loadMyReservations() {
     const grid = document.getElementById('my-reservas-grid');
     if (!grid) return;
-    grid.innerHTML = '<p style="text-align:center; width:100%;">Cargando tus reservas...</p>';
+    grid.innerHTML = '<p style="text-align:center; width:100%;">Cargando...</p>';
 
     try {
         const res = await fetch(`${API_BASE_URL}/units/my-reservations`, { headers: { 'Authorization': `Bearer ${token}` } });
         const myRes = await res.json();
 
-        grid.innerHTML = myRes.map(r => `
-            <div class="card" style="display: flex; gap: 20px; padding: 15px; align-items: center; border-left: 5px solid #2563eb; margin-bottom:10px;">
-                <img src="${r.unit_details?.foto_url || ''}" style="width: 100px; height: 70px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1;">
-                    <h4 style="margin:0;">${r.unit_details?.nombre || 'Unidad'}</h4>
-                    <p style="margin:4px 0; color: #64748b; font-size: 0.9rem;">
-                        📅 ${r.fecha_inicio || 'N/A'} ➔ ${r.fecha_fin || 'N/A'}<br>
-                        Pagado: <b>$${r.total}</b>
-                    </p>
+        grid.innerHTML = myRes.map(r => {
+            const f1 = new Date(r.fecha_inicio).toLocaleString();
+            const f2 = new Date(r.fecha_fin).toLocaleString();
+            return `
+            <div class="card" style="display: flex; gap: 20px; padding: 20px; align-items: center; border-left: 6px solid #2563eb; margin-bottom:15px; flex-wrap: wrap;">
+                <img src="${r.unit_details?.foto_url || ''}" style="width: 140px; height: 100px; object-fit: cover; border-radius: 8px;">
+                <div style="flex: 2; min-width: 250px;">
+                    <h4 style="margin:0; font-size: 1.2rem;">${r.unit_details?.nombre || 'Unidad'}</h4>
+                    <p style="margin: 0; color: #2563eb; font-weight: bold; font-size: 0.9rem;">🏢 ${r.unit_details?.condo_name || 'Condominio'}</p>
+                    <div style="margin-top: 10px; font-size: 0.95rem; color: #475569; line-height: 1.6;">
+                        <p style="margin:2px 0;">📅 <b>Entrada:</b> ${f1}</p>
+                        <p style="margin:2px 0;">📅 <b>Salida:</b> ${f2}</p>
+                    </div>
                 </div>
-                <div class="badge-status status-disponible">Confirmada</div>
+                <div style="text-align: right; flex: 1; min-width: 120px;">
+                    <p style="margin:0; font-size: 0.8rem; color: #64748b;">Total Pagado</p>
+                    <p style="margin:0; font-size: 1.6rem; font-weight: 800; color: #2563eb;">$${r.total}</p>
+                    <span class="badge-status status-disponible" style="margin-top:10px; display:inline-block;">Confirmada</span>
+                </div>
             </div>
-        `).join('') || '<p style="text-align:center; width:100%;">No tienes reservas aún.</p>';
-    } catch (e) { grid.innerHTML = '<p style="text-align:center; width:100%;">Error al cargar reservas.</p>'; }
+        `}).join('') || '<p style="text-align:center; width:100%; padding: 40px;">No tienes reservas.</p>';
+    } catch (e) { grid.innerHTML = '<p style="color:red; text-align:center;">Error.</p>'; }
 }
 
 // ==============================================================================
-// 3. FUNCIONES DE ADMINISTRADOR Y SUPER ADMIN
+// 3. FUNCIONES ADMIN (RECUPERADAS Y MEJORADAS)
 // ==============================================================================
 
 async function loadAdminCondos() {
     const list = document.getElementById('condos-list-admin');
     if (!list) return;
     list.innerHTML = '<p style="text-align:center; width:100%;">Cargando tus propiedades...</p>';
-    
     try {
         const res = await fetch(`${API_BASE_URL}/condos`, { headers: { 'Authorization': `Bearer ${token}` } });
         const condos = await res.json();
-        
-        // Tarjetas rediseñadas para evitar el desbordamiento (Layout vertical adaptable)
         list.innerHTML = condos.map(c => `
-            <div class="card" style="display: flex; flex-direction: column; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 15px;">
+            <div class="card" style="display: flex; flex-direction: column; padding: 0; overflow: hidden; margin-bottom: 15px;">
                 <img src="${c.foto_url}" style="width: 100%; height: 150px; object-fit: cover;">
-                
-                <div style="padding: 15px; display: flex; flex-direction: column; flex: 1;">
-                    <h3 style="margin: 0; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.nombre}</h3>
-                    <p style="color: #64748b; font-size: 0.85rem; margin: 5px 0 15px 0;">📍 ${c.direccion}</p>
-                    
-                    <div style="display: flex; gap: 10px; margin-top: auto;">
-                        <button onclick="viewUnits('${c.id}', '${c.nombre}')" class="btn-primary" style="flex: 1; padding: 10px 5px; font-size: 0.9rem;">👁️ Gestionar</button>
-                        <button onclick="openUnitModal('${c.id}', '${c.nombre}')" class="btn-primary" style="flex: 1; padding: 10px 5px; font-size: 0.9rem;">➕ Unidad</button>
+                <div style="padding: 15px;">
+                    <h3 style="margin: 0;">${c.nombre}</h3>
+                    <p style="color: #64748b; font-size: 0.85rem;">📍 ${c.direccion}</p>
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button onclick="viewUnits('${c.id}', '${c.nombre}')" class="btn-primary" style="flex: 1;">👁️ Gestionar</button>
+                        <button onclick="openUnitModal('${c.id}', '${c.nombre}')" class="btn-primary" style="flex: 1;">➕ Unidad</button>
                     </div>
                 </div>
             </div>
-        `).join('');
-    } catch (e) { console.error("Error Admin Condos:", e); }
+        `).join('') || '<p style="text-align:center; width:100%;">No tienes edificios registrados.</p>';
+    } catch (e) { console.error("Error Admin:", e); }
 }
 
 async function viewUnits(condoId, condoName) {
     currentCondoId = condoId;
     document.getElementById('modal-condo-name').textContent = condoName;
     const container = document.getElementById('units-container');
-    container.innerHTML = '<p style="text-align:center; padding: 20px;">Cargando unidades...</p>';
+    container.innerHTML = 'Cargando...';
     document.getElementById('unit-modal').style.display = 'flex';
-    
     try {
         const res = await fetch(`${API_BASE_URL}/units?condo_id=${condoId}`, { headers: { 'Authorization': `Bearer ${token}` } });
         const units = await res.json();
-        
-        container.innerHTML = units.map(u => `
-            <div class="unit-card ${u.estado === 'Ocupado' ? 'ocupado' : 'disponible'}">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div style="display:flex; gap:15px; align-items:center;">
-                        <img src="${u.foto_url}" style="width:60px; height:60px; border-radius:6px; object-fit:cover;">
-                        <div>
-                            <h5 style="margin:0;">${u.nombre} <span style="color:#2563eb;">($${u.precio}/día)</span></h5>
-                            <span class="badge-status">${u.estado} ${u.borrado_logico ? '<b style="color:red;">- OCULTO</b>' : ''}</span>
-                            ${u.estado === 'Ocupado' ? `<p style="margin:5px 0 0 0; font-size:0.75rem; color:#64748b; line-height: 1.4;">
-                                👤 Reservado por: <b>${u.ocupado_por || 'N/A'}</b><br>
-                                📅 Del: ${u.fecha_inicio || '?'} al ${u.fecha_fin || '?'}
-                            </p>` : ''}
-                        </div>
+        container.innerHTML = units.map(u => {
+            const isOcupado = u.estado === 'Ocupado';
+            return `
+            <div class="unit-card ${isOcupado ? 'ocupado' : 'disponible'}" style="padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom:10px;">
+                <div style="display: flex; gap: 15px; align-items: center; flex: 1;">
+                    <img src="${u.foto_url}" style="width: 70px; height: 70px; object-fit: cover; border-radius: 6px;">
+                    <div style="flex: 1;">
+                        <h5 style="margin:0; font-size:1.1rem;">${u.nombre} <span style="color:#64748b; font-weight:normal;">($${u.precio}/día)</span></h5>
+                        <span class="badge-status ${isOcupado ? 'status-ocupado' : 'status-disponible'}">${u.estado}</span>
+                        ${isOcupado ? `
+                            <div style="margin-top: 8px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; font-size: 0.85rem;">
+                                <p style="margin:0;">👤 <b>Inquilino:</b> ${u.ocupado_por}</p>
+                                <p style="margin:2px 0;">📅 <b>Entrada:</b> ${new Date(u.fecha_inicio).toLocaleString()}</p>
+                                <p style="margin:2px 0;">📅 <b>Salida:</b> ${new Date(u.fecha_fin).toLocaleString()}</p>
+                            </div>
+                        ` : ''}
                     </div>
-                    <button onclick="toggleDeleteUnit('${u.id}', ${u.borrado_logico || false}, '${u.condo_id}')" style="border:none; background:none; cursor:pointer; font-size:1.2rem;" title="${u.borrado_logico ? 'Reactivar' : 'Ocultar'}">
-                        ${u.borrado_logico ? '🔄' : '🗑️'}
-                    </button>
                 </div>
+                <button onclick="toggleDeleteUnit('${u.id}', ${u.borrado_logico || false}, '${u.condo_id}')" style="background:none; border:none; cursor:pointer; font-size:1.2rem; margin-left:15px;">
+                    ${u.borrado_logico ? '🔄' : '🗑️'}
+                </button>
             </div>
-        `).join('') || '<p style="text-align:center;">No hay unidades registradas en este edificio.</p>';
-    } catch (e) { container.innerHTML = '<p style="text-align:center; color:red;">Error al cargar unidades.</p>'; }
+        `}).join('') || 'Sin unidades.';
+    } catch (e) { container.innerHTML = 'Error.'; }
 }
 
 async function toggleDeleteUnit(unitId, isDeleted, condoId) {
-    const action = isDeleted ? 'activate' : 'delete';
-    if (!confirm(`¿Deseas ${isDeleted ? 'Reactivar' : 'Dar de baja (Ocultar)'} esta unidad?`)) return;
-
+    if (!confirm(`¿Deseas ${isDeleted ? 'Reactivar' : 'Ocultar'} esta unidad?`)) return;
     try {
         await fetch(`${API_BASE_URL}/units`, {
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: unitId, action: action, condo_id: condoId })
+            body: JSON.stringify({ id: unitId, action: isDeleted ? 'activate' : 'delete', condo_id: condoId })
         });
         viewUnits(condoId, document.getElementById('modal-condo-name').textContent);
-    } catch (e) { alert("Error al actualizar estado"); }
+    } catch (e) { alert("Error al actualizar."); }
 }
 
 async function createInviteToken() {
-    const btn = document.querySelector('.master-card button');
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Generando...";
-
     try {
-        const res = await fetch(`${API_BASE_URL}/admin/token`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }});
+        const res = await fetch(`${API_BASE_URL}/admin/token`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }});
         const data = await res.json();
-        
-        if (res.ok) prompt("✅ Token Maestro generado con éxito. Cópialo y compártelo:", data.token);
-        else alert("❌ Error: " + data.msg);
-    } catch (e) { alert("Error de conexión al generar el token."); } 
-    finally { btn.disabled = false; btn.textContent = originalText; }
+        if (res.ok) prompt("✅ Token Maestro generado:", data.token);
+        else alert("Error: " + data.msg);
+    } catch (e) { alert("Error de red."); }
 }
 
 // ==============================================================================
@@ -222,46 +201,49 @@ function initWS() {
     const socket = new WebSocket(WS_URL);
     socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.action === 'REFRESH' && userData.role === 'admin') loadAdminCondos();
-        if (data.action === 'REFRESH_UNITS' && currentCondoId === data.condo_id) {
-            if (userData.role === 'admin') viewUnits(data.condo_id, document.getElementById('modal-condo-name').textContent);
-            else exploreUnits(currentCondoId, document.getElementById('market-title').textContent.replace('Unidades en ', ''));
+        if (data.action === 'REFRESH') {
+            if (userData.role === 'admin') loadAdminCondos();
+            else loadResidenteDashboard(); 
+        }
+        if (data.action === 'REFRESH_UNITS') {
+            if (userData.role === 'admin') {
+                if (currentCondoId === data.condo_id) viewUnits(data.condo_id, document.getElementById('modal-condo-name').textContent);
+            } else {
+                if (currentCondoId === data.condo_id && document.getElementById('view-market').style.display === 'block') exploreUnits(currentCondoId, document.getElementById('market-title').textContent.replace('Unidades en ', ''));
+                if (document.getElementById('view-reservas').style.display === 'block') loadMyReservations();
+            }
         }
     };
     socket.onclose = () => setTimeout(initWS, 3000);
 }
 
-async function fetchServerConfig() {
-    try {
-        const res = await fetch(`${API_BASE_URL}/config`);
-        const config = await res.json();
-        WS_URL = config.ws_url;
-        initWS();
-    } catch (e) { console.error("Error auto-config WS:", e); }
-}
-
 // ==============================================================================
-// 5. MODALES Y NAVEGACIÓN
+// 5. MODALES Y EVENTOS (MÁSCARA MM/YY INCLUIDA)
 // ==============================================================================
 
 function switchTab(tab) {
     const market = document.getElementById('view-market'), reservas = document.getElementById('view-reservas');
-    const tabM = document.getElementById('tab-market'), tabR = document.getElementById('tab-reservas');
-    if (!market || !reservas) return;
-
     if (tab === 'market') {
         market.style.display = 'block'; reservas.style.display = 'none';
-        if(tabM) tabM.classList.add('active'); if(tabR) tabR.classList.remove('active');
         loadResidenteDashboard();
     } else {
         market.style.display = 'none'; reservas.style.display = 'block';
-        if(tabM) tabM.classList.remove('active'); if(tabR) tabR.classList.add('active');
         loadMyReservations();
     }
 }
 
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+function openReserveModal(id, nombre, precio) {
+    document.getElementById('reserve-unit-id').value = id;
+    document.getElementById('reserve-unit-price').value = precio;
+    document.getElementById('reserve-unit-name').textContent = nombre;
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    const formatted = now.toISOString().slice(0, 19);
+    document.getElementById('reserve-start').min = formatted;
+    document.getElementById('reserve-end').min = formatted;
+    document.getElementById('reserve-total-display').textContent = '$0.00';
+    document.getElementById('reserve-modal').style.display = 'flex';
+}
 
 function openUnitModal(id, nombre) {
     document.getElementById('modal-condo-id').value = id;
@@ -269,113 +251,77 @@ function openUnitModal(id, nombre) {
     document.getElementById('add-unit-modal').style.display = 'flex';
 }
 
-// Abre el modal del calendario
-function openReserveModal(id, nombre, precio) {
-    document.getElementById('reserve-unit-id').value = id;
-    document.getElementById('reserve-unit-price').value = precio;
-    document.getElementById('reserve-unit-name').textContent = nombre;
-    
-    // Bloquear fechas anteriores a hoy
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('reserve-start').min = today;
-    document.getElementById('reserve-end').min = today;
-    
-    // Limpiar campos
-    document.getElementById('reserve-start').value = '';
-    document.getElementById('reserve-end').value = '';
-    document.getElementById('reserve-total-display').textContent = '$0.00';
-    document.getElementById('reserve-total-display').dataset.total = '0';
-    document.getElementById('btn-confirm-reserve').disabled = true;
-
-    document.getElementById('reserve-modal').style.display = 'flex';
-}
-
-// Calcula el total automáticamente cuando cambian las fechas
 function calculateTotal() {
     const start = document.getElementById('reserve-start').value;
     const end = document.getElementById('reserve-end').value;
-    const price = parseFloat(document.getElementById('reserve-unit-price').value);
+    const pricePerDay = parseFloat(document.getElementById('reserve-unit-price').value);
     const display = document.getElementById('reserve-total-display');
     const btn = document.getElementById('btn-confirm-reserve');
-
     if (start && end) {
-        const d1 = new Date(start);
-        const d2 = new Date(end);
-        const diffTime = d2 - d1;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-
-        if (diffDays > 0) {
-            const total = diffDays * price;
+        const diffSecs = (new Date(end) - new Date(start)) / 1000;
+        if (diffSecs > 0) {
+            let total = (diffSecs / 86400) * pricePerDay;
+            if (total < 0.01) total = 0.01;
             display.textContent = `$${total.toFixed(2)}`;
-            display.dataset.total = total; // Guardamos el valor numérico
+            display.dataset.total = total;
             btn.disabled = false;
-        } else {
-            display.textContent = "Fechas inválidas";
-            display.dataset.total = '0';
-            btn.disabled = true;
-        }
-    } else {
-        display.textContent = "$0.00";
-        btn.disabled = true;
+        } else { btn.disabled = true; display.textContent = "Error tiempo"; }
     }
 }
 
-// Agregar los listeners para que calculen al vuelo
+// MÁSCARA AUTOMÁTICA MM/YY
+document.getElementById('pay-exp')?.addEventListener('input', (e) => {
+    let v = e.target.value.replace(/\D/g, ''); 
+    if (v.length >= 2) e.target.value = v.slice(0, 2) + '/' + v.slice(2, 4);
+    else e.target.value = v;
+});
+
 document.getElementById('reserve-start')?.addEventListener('change', calculateTotal);
 document.getElementById('reserve-end')?.addEventListener('change', calculateTotal);
 
-
-// ==============================================================================
-// 6. EVENT LISTENERS (FORMULARIOS DE CREACIÓN Y RESERVAS)
-// ==============================================================================
-
-// ENVIAR RESERVA A AWS
 document.getElementById('reserve-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
-    const unitId = document.getElementById('reserve-unit-id').value;
-    const total = parseFloat(document.getElementById('reserve-total-display').dataset.total);
-    const fecha_inicio = document.getElementById('reserve-start').value;
-    const fecha_fin = document.getElementById('reserve-end').value;
+    const exp = document.getElementById('pay-exp').value;
+    if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(exp)) { alert("⚠️ Fecha MM/YY inválida."); return; }
     
     const btn = document.getElementById('btn-confirm-reserve');
-    btn.disabled = true;
-    btn.textContent = "Procesando...";
+    btn.disabled = true; btn.textContent = "Validando Pago...";
+    
+    const payload = {
+        unit_id: document.getElementById('reserve-unit-id').value,
+        total: parseFloat(document.getElementById('reserve-total-display').dataset.total),
+        condo_id: currentCondoId,
+        tarjeta: document.getElementById('pay-card').value,
+        fecha_inicio: new Date(document.getElementById('reserve-start').value).toISOString(),
+        fecha_fin: new Date(document.getElementById('reserve-end').value).toISOString()
+    };
 
     try {
         const res = await fetch(`${API_BASE_URL}/units/reserve`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ 
-                unit_id: unitId, 
-                total: total, 
-                condo_id: currentCondoId,
-                fecha_inicio: fecha_inicio,
-                fecha_fin: fecha_fin
-            })
+            body: JSON.stringify(payload)
         });
-        
         if(res.ok){
-            alert("✅ ¡Reserva Exitosa!");
-            closeModal('reserve-modal');
+            alert("✅ Pago y Reserva Confirmados.");
+            document.getElementById('reserve-modal').style.display = 'none';
             switchTab('reservas');
+            const time = (new Date(payload.fecha_fin).getTime() - new Date().getTime());
+            if(time > 0) setTimeout(() => fetch(`${API_BASE_URL}/units?condo_id=${currentCondoId}`, {headers: {'Authorization': `Bearer ${token}`}}), time + 2000);
         } else {
-            alert("Error al procesar la reserva. Puede que ya esté ocupada.");
+            const err = await res.json();
+            alert("❌ Error: " + err.msg);
         }
-    } catch (e) { 
-        alert("Error de conexión al reservar"); 
-    } finally {
-        btn.textContent = "Confirmar Reserva";
-    }
+    } catch (e) { alert("Error de conexión."); } 
+    finally { btn.textContent = "Pagar y Confirmar"; btn.disabled = false; }
 });
 
+// ==============================================================================
+// 6. EVENT LISTENERS (AÑADIR EDIFICIO Y UNIDAD)
+// ==============================================================================
 
 document.getElementById('add-condo-form')?.addEventListener('submit', async (e) => {
     e.preventDefault(); 
-    const btn = e.target.querySelector('button');
-    const originalText = btn.textContent;
-    btn.disabled = true; btn.textContent = "Registrando Edificio...";
-
     const nombre = document.getElementById('condo-nombre').value;
     const direccion = document.getElementById('condo-direccion').value;
     const file = document.getElementById('condo-file').files[0];
@@ -388,18 +334,13 @@ document.getElementById('add-condo-form')?.addEventListener('submit', async (e) 
             method: 'PUT', headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'},
             body: JSON.stringify({ nombre, direccion, file_key })
         });
-        alert("✅ Edificio registrado exitosamente");
+        alert("✅ Edificio registrado");
         e.target.reset(); loadAdminCondos(); 
-    } catch (err) { alert("Error al registrar el edificio"); } 
-    finally { btn.disabled = false; btn.textContent = originalText; }
+    } catch (err) { alert("Error al registrar"); }
 });
 
 document.getElementById('add-unit-form')?.addEventListener('submit', async (e) => {
     e.preventDefault(); 
-    const btn = e.target.querySelector('button');
-    const originalText = btn.textContent;
-    btn.disabled = true; btn.textContent = "Subiendo imagen y guardando...";
-
     const condo_id = document.getElementById('modal-condo-id').value;
     const nombre = document.getElementById('unit-nombre').value;
     const precio = document.getElementById('unit-precio').value;
@@ -417,18 +358,17 @@ document.getElementById('add-unit-form')?.addEventListener('submit', async (e) =
         closeModal('add-unit-modal');
         e.target.reset(); 
         viewUnits(condo_id, document.getElementById('modal-condo-name').textContent);
-    } catch (err) { alert("Error al guardar unidad"); } 
-    finally { btn.disabled = false; btn.textContent = originalText; }
+    } catch (err) { alert("Error al guardar unidad"); }
 });
 
-// ==============================================================================
-// 7. INICIALIZACIÓN
-// ==============================================================================
-
+// Inicialización de configs al cargar el DOM
 document.addEventListener('DOMContentLoaded', () => {
     if (userData) {
         document.getElementById('user-email').textContent = userData.email;
-        fetchServerConfig();
+        fetch(`${API_BASE_URL}/config`).then(r => r.json()).then(c => { 
+            WS_URL = c.ws_url; 
+            initWS(); 
+        }).catch(e => console.error("Error auto-config WS:", e));
 
         if (userData.role === 'admin') {
             document.getElementById('admin-section').style.display = 'block';
@@ -438,7 +378,10 @@ document.addEventListener('DOMContentLoaded', () => {
             loadAdminCondos();
         } else {
             document.getElementById('residente-section').style.display = 'block';
-            switchTab('market'); 
+            loadResidenteDashboard();
         }
     }
 });
+
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function logout() { localStorage.clear(); window.location.href = 'index.html'; }
