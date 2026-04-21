@@ -93,11 +93,17 @@
             </div>
 
             <div id="view-reservas" style="display: none;">
-                <button onclick="openIncidentModal()" class="btn-primary" style="background:#ef4444; margin-bottom:20px;">🚨 Reportar Incidente / Falla</button>
                 <h3 style="margin-top:20px; margin-bottom: 15px;">💰 Mis Cuotas de Mantenimiento</h3>
                 <div id="my-fees-grid" style="margin-bottom: 40px;"></div> 
+
                 <h3 style="margin-bottom: 20px;">🔑 Mis Unidades Asignadas</h3>
                 <div id="my-reservas-grid"></div> 
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:40px; margin-bottom:15px;">
+                    <h3 style="margin:0;">🛠️ Mis Reportes de Falla</h3>
+                    <button onclick="openIncidentModal()" class="btn-primary" style="background:#ef4444; font-size:0.8rem; padding:8px 12px;">🚨 Nuevo Reporte</button>
+                </div>
+                <div id="my-incidents-grid" style="margin-bottom: 40px;"></div>
             </div>
 
             <div id="view-anuncios" style="display: none;">
@@ -118,7 +124,20 @@
 
     <div id="unit-modal" class="modal"><div class="modal-content" style="max-width: 750px;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="margin:0;">Unidades en <span id="modal-condo-name" style="color:#6d28d9;"></span></h3><button onclick="closeModal('unit-modal')" class="btn-action">&times;</button></div><div id="units-container"></div></div></div>
     <div id="add-unit-modal" class="modal"><div class="modal-content"><h3>Añadir Unidad a <span id="modal-condo-unit-name"></span></h3><form id="add-unit-form"><input type="hidden" id="modal-condo-id"><input type="text" id="unit-nombre" placeholder="Nombre (Ej: Depto 101)" required><input type="number" id="unit-precio" placeholder="Precio por Mes" required style="margin-top:10px;"><input type="file" id="unit-file" accept="image/*" required style="margin-top:10px;"><div style="display:flex; gap:10px; margin-top:20px;"><button type="submit" class="btn-primary" style="flex:1;">Guardar</button><button type="button" onclick="closeModal('add-unit-modal')" style="flex:1; border:none; background:#e2e8f0; border-radius:8px;">Cancelar</button></div></form></div></div>
-    <div id="announcement-modal" class="modal"><div class="modal-content"><h3>Publicar Anuncio</h3><form id="announcement-form"><input type="text" id="ann-titulo" placeholder="Título" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; margin-bottom:10px;"><textarea id="ann-mensaje" placeholder="Mensaje para los residentes..." required style="width:100%; height:100px; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-family:inherit;"></textarea><button type="submit" class="btn-primary" style="width:100%; margin-top:15px;">Publicar</button></form></div></div>
+    
+    <div id="announcement-modal" class="modal">
+        <div class="modal-content">
+            <h3>Publicar Anuncio</h3>
+            <form id="announcement-form">
+                <input type="text" id="ann-titulo" placeholder="Título" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; margin-bottom:10px;">
+                <textarea id="ann-mensaje" placeholder="Mensaje para los residentes..." required style="width:100%; height:100px; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-family:inherit;"></textarea>
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    <button type="submit" class="btn-primary" style="flex:1;">Publicar</button>
+                    <button type="button" onclick="closeModal('announcement-modal')" style="flex:1; border:none; background:#e2e8f0; border-radius:8px; cursor:pointer;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
     
     <div id="incident-modal" class="modal">
         <div class="modal-content">
@@ -130,8 +149,10 @@
                 </select>
                 <label style="font-size: 0.85rem; font-weight: bold; color: #475569;">Describe el problema:</label>
                 <textarea id="incident-desc" placeholder="Ej: Fuga de agua, fallo eléctrico..." required style="width:100%; height:100px; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-family:inherit;"></textarea>
-                <button type="submit" class="btn-primary" style="width:100%; margin-top:15px; background:#ef4444;">Enviar Reporte</button>
-                <button type="button" onclick="closeModal('incident-modal')" style="width:100%; margin-top:10px; background:none; border:none; color:#64748b; cursor:pointer;">Cancelar</button>
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    <button type="submit" class="btn-primary" style="flex:1; background:#ef4444;">Enviar Reporte</button>
+                    <button type="button" onclick="closeModal('incident-modal')" style="flex:1; border:none; background:#e2e8f0; border-radius:8px; cursor:pointer;">Cancelar</button>
+                </div>
             </form>
         </div>
     </div>
@@ -171,12 +192,13 @@
                 </div>
                 <div style="display:flex; gap:10px; margin-top:20px;">
                     <button type="submit" class="btn-primary" style="flex:1; padding: 15px;" id="btn-confirm-reserve" disabled>Firmar y Generar Cuota</button>
-                    <button type="button" onclick="closeModal('reserve-modal')" style="flex:1; border:none; background:#e2e8f0; border-radius:8px;">Cancelar</button>
+                    <button type="button" onclick="closeModal('reserve-modal')" style="flex:1; border:none; background:#e2e8f0; border-radius:8px; cursor:pointer;">Cancelar</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <script src="config.js"></script>
     <script src="dashboard.js"></script>
 </body>
 </html>

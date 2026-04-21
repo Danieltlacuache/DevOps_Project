@@ -1,121 +1,45 @@
-🏢 CondoManager Pro - Sistema de Gestión Escalable
-Este proyecto es una plataforma integral para la gestión de condominios, unidades y mantenimiento, construida sobre una arquitectura Serverless en AWS. Permite el manejo de roles (Admin, Residente, Mantenimiento), pagos simulados, actualizaciones en tiempo real vía WebSockets y entrega de contenido mediante CDN.
+# 🏢 CondoManager Pro - Sistema de Gestión de Condominios
 
-🚀 Requisitos Previos
-Antes de empezar, asegúrate de tener instalado lo siguiente:
+CondoManager Pro es una plataforma moderna para la administración de propiedades, diseñada con una arquitectura **100% Serverless** altamente escalable utilizando Amazon Web Services (AWS). 
 
-AWS CLI configurado con tus credenciales (aws configure).
+El sistema permite a los administradores gestionar condominios, unidades, cuotas e incidentes. Los residentes pueden firmar contratos de renta (con generación automática de cuotas), pagar de forma segura y reportar fallas. Además, cuenta con un sistema de **asignación inteligente (Round Robin)** para balancear la carga de trabajo del equipo de mantenimiento.
 
-AWS SAM CLI para el despliegue de infraestructura.
+---
 
-Python 3.10 o superior.
+## 🏗️ Arquitectura del Sistema (Nube Nativa)
 
-Node.js (opcional, para usar un servidor local para el frontend).
+Este proyecto no utiliza servidores tradicionales (EC2). Está construido con servicios gestionados para garantizar alta disponibilidad y escalabilidad automática (Cero Administración):
 
-Una cuenta de AWS activa.
+* **Frontend:** HTML5, CSS3 y Vanilla JavaScript (Desacoplado del backend).
+* **Backend REST & WebSockets:** AWS Lambda (Python 3.10) y Amazon API Gateway.
+* **Base de Datos:** Amazon DynamoDB (NoSQL) con diseño multi-tabla.
+* **Almacenamiento y CDN:** Amazon S3 (para imágenes) distribuido mediante Amazon CloudFront.
+* **Seguridad y Criptografía:** Autenticación stateless con JWT. La llave maestra es generada y rotada automáticamente por **AWS Secrets Manager**.
+* **Infraestructura como Código (IaC):** AWS SAM (Serverless Application Model).
 
-🛠️ Paso 1: Configuración de Secretos (JWT)
-El sistema utiliza AWS Secrets Manager para manejar la firma de los tokens de seguridad.
+---
 
-Ve a la consola de AWS -> Secrets Manager.
+## ⚙️ Prerrequisitos
 
-Crea un nuevo secreto de tipo "Otro tipo de secreto".
+Para desplegar este proyecto en tu propia cuenta, necesitas tener instaladas las siguientes herramientas:
 
-Usa el nombre: CondoManager/JWT_Secret.
+1.  **[Cuenta de AWS](https://aws.amazon.com/es/):** Con permisos de administrador.
+2.  **[AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html):** Configurado con tus credenciales (`aws configure`).
+3.  **[AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html):** Para compilar y desplegar la infraestructura.
+4.  **[Python 3.10](https://www.python.org/downloads/):** O versión compatible.
+5.  Un servidor web local simple (ej. extensión "Live Server" en VSCode o `python -m http.server`) para ejecutar el frontend sin bloqueos de CORS.
 
-Agrega un par llave/valor:
+---
 
-Llave: JWT_KEY
+## 🚀 Guía de Despliegue (Backend)
 
-Valor: TuPalabraSecretaSuperSegura (puedes poner lo que quieras).
+Todo el backend, bases de datos, buckets, políticas de seguridad y secretos se despliegan automáticamente con 2 comandos.
 
-Guarda el secreto.
+### 1. Clonar el repositorio
+Extrae los archivos del proyecto y abre una terminal en la carpeta raíz (donde se encuentra el archivo `template.yaml`).
 
-📦 Paso 2: Despliegue de la Infraestructura (Backend)
-Todo el backend se despliega automáticamente usando el archivo template.yaml.
+### 2. Compilar el proyecto
+Utiliza SAM para empaquetar el código de Python y preparar la plantilla de CloudFormation:
 
-Abre una terminal en la carpeta raíz del proyecto.
-
-Ejecuta el comando para compilar:
-
-Bash
+```bash
 sam build
-Ejecuta el despliegue guiado:
-
-Bash
-sam deploy --guided
-Configuración del despliegue:
-
-Stack Name: CondoManagerStack
-
-AWS Region: us-east-2 (recomendada por la latencia en ITESO).
-
-Confirm changes before deploy: Yes.
-
-Allow SAM CLI IAM role creation: Yes.
-
-Disable rollback: No.
-
-Acepta los permisos de CondoManagerFunction para que sea pública.
-
-IMPORTANTE: Al finalizar, SAM te entregará unos Outputs. Copia estos valores, los necesitarás para el frontend:
-
-ApiUrl
-
-WebSocketUrl
-
-CDNUrl
-
-💻 Paso 3: Configuración del Frontend
-Ahora debemos conectar la interfaz con tu nueva infraestructura en la nube.
-
-Abre el archivo dashboard.js y script.js.
-
-Busca la variable AWS_PROD_URL al inicio de los archivos.
-
-Reemplaza el valor con la ApiUrl que te dio SAM (asegúrate de que termine en /Prod/).
-
-El sistema detectará automáticamente el WebSocketUrl mediante el endpoint de /config, pero asegúrate de que el bucket de S3 tenga las imágenes que subas.
-
-🔑 Paso 4: Creación del Primer Administrador
-Para poder usar el sistema, necesitas una cuenta de Admin.
-
-El sistema tiene un "Super User" por defecto definido en el código como admin@admin.com.
-
-Para registrarte como admin:
-
-Ve a la consola de AWS -> DynamoDB.
-
-Busca la tabla AdminTokensTable.
-
-Crea un nuevo ítem manual:
-
-token: LLAVE-MAESTRA-PRO (o el nombre que quieras).
-
-used: false (booleano).
-
-type: admin.
-
-Ve a register.html en tu navegador, ingresa tus datos y en el campo de "Token" usa la llave que creaste.
-
-🛠️ Paso 5: Ejecución
-Puedes correr el frontend simplemente abriendo los archivos .html o usando la extensión Live Server de VS Code.
-
-Admin: Crea condominios, sube fotos (que se guardarán en S3 y se servirán por CloudFront), crea unidades y asigna tareas de mantenimiento.
-
-Residente: Explora unidades (afecta la popularidad/algoritmo de ordenamiento), reserva con el sistema de pagos y ve sus rentas activas.
-
-Mantenimiento: Registra un técnico con un token generado por el Admin (MAINT-XXXX) y gestiona los estados de las reparaciones.
-
-📊 Conceptos de Ingeniería Aplicados (Para tu reporte)
-Si te preguntan qué hace especial a este proyecto, menciona esto:
-
-Observabilidad: Implementamos AWS X-Ray para el rastreo de trazas distribuidas.
-
-Teorema CAP: Usamos ConsistentRead=True en DynamoDB para garantizar consistencia fuerte en el login.
-
-CDN: Las imágenes no se sirven desde S3, sino desde nodos de borde (Edge) vía CloudFront para reducir latencia.
-
-Tiempo Real: Arquitectura orientada a eventos usando WebSockets para sincronizar vistas sin refrescar.
-
-Limpieza Asíncrona: Lógica de "Lazy Cleanup" para liberar unidades cuando expira la reserva.

@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: CondoManager Pro
+Description: CondoManager Pro - Infraestructura Final (100% SRS Compliant)
 
 Globals:
   Function:
@@ -19,13 +19,16 @@ Globals:
         MAINTENANCE_TASKS_TABLE: !Ref MaintenanceTasksTable
         ANNOUNCEMENTS_TABLE: !Ref AnnouncementsTable
         INCIDENTS_TABLE: !Ref IncidentsTable
-        FEES_TABLE: !Ref FeesTable # NUEVA: Para cuotas de mantenimiento
+        FEES_TABLE: !Ref FeesTable
         PHOTOS_BUCKET: !Ref CondoPhotosBucket
         SECRET_ID: "CondoManager/JWT_Secret"
         WEBSOCKET_URL: !Sub "https://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
         CDN_DOMAIN: !GetAtt CondoCloudFrontDistribution.DomainName
 
 Resources:
+  # ==============================================================================
+  # 1. API GATEWAY (REST)
+  # ==============================================================================
   CondoRestApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -36,6 +39,9 @@ Resources:
         AllowHeaders: "'*'"
         AllowOrigin: "'*'"
 
+  # ==============================================================================
+  # 2. FUNCIÓN LAMBDA (SERVERLESS BACKEND)
+  # ==============================================================================
   CondoManagerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -56,17 +62,17 @@ Resources:
             Path: /{proxy+}
             Method: ANY
 
-  # TABLAS ORIGINALES + SRS PREVIO
+  # ==============================================================================
+  # 3. TABLAS DYNAMODB
+  # ==============================================================================
   UsersTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: email, Type: String } } }
-  UnitsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
   ResidentsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  UnitsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
   AdminTokensTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: token, Type: String } } }
   ConnectionsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: connectionId, Type: String } } }
   MaintenanceTasksTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
   AnnouncementsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
   IncidentsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  
-  # NUEVA TABLA: CUOTAS (FEES)
   FeesTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
 
   CondosTable:
@@ -80,13 +86,32 @@ Resources:
           KeySchema: [{AttributeName: popularidad, KeyType: HASH}]
           Projection: {ProjectionType: ALL}
 
-  # S3 Y CLOUDFRONT
+  # ==============================================================================
+  # 4. S3 Y CLOUDFRONT (CDN)
+  # ==============================================================================
   CondoPhotosBucket:
     Type: AWS::S3::Bucket
     Properties:
-      PublicAccessBlockConfiguration: { BlockPublicAcls: false, BlockPublicPolicy: false }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
       CorsConfiguration:
         CorsRules: [{ AllowedHeaders: ['*'], AllowedMethods: [GET, PUT, POST, DELETE], AllowedOrigins: ['*'] }]
+
+  # NUEVO: Política que hace público el bucket automáticamente al desplegar
+  CondoPhotosBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CondoPhotosBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${CondoPhotosBucket}/*"
 
   CondoCloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -103,7 +128,9 @@ Resources:
           AllowedMethods: [GET, HEAD, OPTIONS]
           ForwardedValues: { QueryString: false, Cookies: { Forward: none } }
 
-  # WEBSOCKETS
+  # ==============================================================================
+  # 5. WEBSOCKETS (TIEMPO REAL)
+  # ==============================================================================
   CondoWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
     Properties: { Name: CondoWebSocketApi, ProtocolType: WEBSOCKET, RouteSelectionExpression: "$request.body.action" }
@@ -138,4 +165,5 @@ Resources:
 
 Outputs:
   ApiUrl: { Value: !Sub "https://${CondoRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/" }
+  WebSocketUrl: { Value: !Sub "wss://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod" }
   CDNUrl: { Value: !GetAtt CondoCloudFrontDistribution.DomainName }
