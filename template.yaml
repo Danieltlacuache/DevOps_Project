@@ -7,7 +7,7 @@ Globals:
     Timeout: 30
     MemorySize: 512
     Runtime: python3.10
-    Tracing: Active # APLICACIÓN OBSERVABILIDAD: Activa X-Ray
+    Tracing: Active
     Environment:
       Variables:
         USERS_TABLE: !Ref UsersTable
@@ -16,16 +16,16 @@ Globals:
         UNITS_TABLE: !Ref UnitsTable
         ADMIN_TOKENS_TABLE: !Ref AdminTokensTable
         CONNECTIONS_TABLE: !Ref ConnectionsTable
-        MAINTENANCE_TASKS_TABLE: !Ref MaintenanceTasksTable # NUEVA VARIABLE PARA MANTENIMIENTO
+        MAINTENANCE_TASKS_TABLE: !Ref MaintenanceTasksTable
+        ANNOUNCEMENTS_TABLE: !Ref AnnouncementsTable
+        INCIDENTS_TABLE: !Ref IncidentsTable
+        FEES_TABLE: !Ref FeesTable # NUEVA: Para cuotas de mantenimiento
         PHOTOS_BUCKET: !Ref CondoPhotosBucket
         SECRET_ID: "CondoManager/JWT_Secret"
         WEBSOCKET_URL: !Sub "https://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
         CDN_DOMAIN: !GetAtt CondoCloudFrontDistribution.DomainName
 
 Resources:
-  # ==============================================================================
-  # 1. API GATEWAY CON METRICAS, TRACING Y CORS
-  # ==============================================================================
   CondoRestApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -36,9 +36,6 @@ Resources:
         AllowHeaders: "'*'"
         AllowOrigin: "'*'"
 
-  # ==============================================================================
-  # 2. FUNCIÓN LAMBDA PRINCIPAL (MONOLITO ESCALABLE)
-  # ==============================================================================
   CondoManagerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -50,7 +47,7 @@ Resources:
         - AmazonS3FullAccess
         - SecretsManagerReadWrite
         - AmazonAPIGatewayInvokeFullAccess
-        - "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess" # PERMISO PARA OBSERVABILIDAD
+        - "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
       Events:
         CondoApi:
           Type: Api
@@ -59,74 +56,37 @@ Resources:
             Path: /{proxy+}
             Method: ANY
 
-  # ==============================================================================
-  # 3. BASE DE DATOS (DYNAMODB) - TEOREMA CAP Y ALGORITMOS
-  # ==============================================================================
-  UsersTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: email, Type: String }
-
-  ResidentsTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
-
-  AdminTokensTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: token, Type: String }
-
-  ConnectionsTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: connectionId, Type: String }
-
-  UnitsTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
-
-  # NUEVA TABLA PARA GESTIÓN DE MANTENIMIENTO
-  MaintenanceTasksTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
+  # TABLAS ORIGINALES + SRS PREVIO
+  UsersTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: email, Type: String } } }
+  UnitsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  ResidentsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  AdminTokensTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: token, Type: String } } }
+  ConnectionsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: connectionId, Type: String } } }
+  MaintenanceTasksTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  AnnouncementsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  IncidentsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  
+  # NUEVA TABLA: CUOTAS (FEES)
+  FeesTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
 
   CondosTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-        - AttributeName: popularidad
-          AttributeType: N
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}, {AttributeName: popularidad, AttributeType: N}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
       BillingMode: PAY_PER_REQUEST
       GlobalSecondaryIndexes:
-        - IndexName: PopularityIndex # APLICACIÓN ALGORITMO: Orden por popularidad
-          KeySchema:
-            - AttributeName: popularidad
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
+        - IndexName: PopularityIndex
+          KeySchema: [{AttributeName: popularidad, KeyType: HASH}]
+          Projection: {ProjectionType: ALL}
 
-  # ==============================================================================
-  # 4. ALMACENAMIENTO Y DISTRIBUCIÓN DE CONTENIDO (S3 + CLOUDFRONT)
-  # ==============================================================================
+  # S3 Y CLOUDFRONT
   CondoPhotosBucket:
     Type: AWS::S3::Bucket
     Properties:
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
+      PublicAccessBlockConfiguration: { BlockPublicAcls: false, BlockPublicPolicy: false }
       CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders: ['*']
-            AllowedMethods: [GET, PUT, POST, DELETE]
-            AllowedOrigins: ['*']
+        CorsRules: [{ AllowedHeaders: ['*'], AllowedMethods: [GET, PUT, POST, DELETE], AllowedOrigins: ['*'] }]
 
   CondoCloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -136,42 +96,25 @@ Resources:
         Origins:
           - DomainName: !GetAtt CondoPhotosBucket.DomainName
             Id: S3Origin
-            S3OriginConfig:
-              OriginAccessIdentity: ""
+            S3OriginConfig: { OriginAccessIdentity: "" }
         DefaultCacheBehavior:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
           AllowedMethods: [GET, HEAD, OPTIONS]
-          CachedMethods: [GET, HEAD]
-          ForwardedValues:
-            QueryString: false
-            Cookies:
-              Forward: none
+          ForwardedValues: { QueryString: false, Cookies: { Forward: none } }
 
-  # ==============================================================================
-  # 5. COMUNICACIÓN EN TIEMPO REAL (WEBSOCKETS)
-  # ==============================================================================
+  # WEBSOCKETS
   CondoWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
-    Properties:
-      Name: CondoWebSocketApi
-      ProtocolType: WEBSOCKET
-      RouteSelectionExpression: "$request.body.action"
+    Properties: { Name: CondoWebSocketApi, ProtocolType: WEBSOCKET, RouteSelectionExpression: "$request.body.action" }
 
   ConnectRoute:
     Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref CondoWebSocketApi
-      RouteKey: $connect
-      AuthorizationType: NONE
-      Target: !Join [ '/', [ 'integrations', !Ref WebSocketIntegration ] ]
+    Properties: { ApiId: !Ref CondoWebSocketApi, RouteKey: $connect, Target: !Join [ '/', [ 'integrations', !Ref WebSocketIntegration ] ] }
 
   DisconnectRoute:
     Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref CondoWebSocketApi
-      RouteKey: $disconnect
-      Target: !Join [ '/', [ 'integrations', !Ref WebSocketIntegration ] ]
+    Properties: { ApiId: !Ref CondoWebSocketApi, RouteKey: $disconnect, Target: !Join [ '/', [ 'integrations', !Ref WebSocketIntegration ] ] }
 
   WebSocketIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -183,30 +126,16 @@ Resources:
   WebSocketDeployment:
     Type: AWS::ApiGatewayV2::Deployment
     DependsOn: [ConnectRoute, DisconnectRoute]
-    Properties:
-      ApiId: !Ref CondoWebSocketApi
+    Properties: { ApiId: !Ref CondoWebSocketApi }
 
   WebSocketStage:
     Type: AWS::ApiGatewayV2::Stage
-    Properties:
-      StageName: Prod
-      DeploymentId: !Ref WebSocketDeployment
-      ApiId: !Ref CondoWebSocketApi
+    Properties: { StageName: Prod, DeploymentId: !Ref WebSocketDeployment, ApiId: !Ref CondoWebSocketApi }
 
   CondoFunctionWSAllow:
     Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref CondoManagerFunction
-      Principal: apigateway.amazonaws.com
+    Properties: { Action: lambda:InvokeFunction, FunctionName: !Ref CondoManagerFunction, Principal: apigateway.amazonaws.com }
 
 Outputs:
-  ApiUrl:
-    Description: "URL de la API REST"
-    Value: !Sub "https://${CondoRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
-  WebSocketUrl:
-    Description: "URL del WebSocket"
-    Value: !Sub "wss://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
-  CDNUrl:
-    Description: "URL de la CDN (CloudFront)"
-    Value: !GetAtt CondoCloudFrontDistribution.DomainName
+  ApiUrl: { Value: !Sub "https://${CondoRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/" }
+  CDNUrl: { Value: !GetAtt CondoCloudFrontDistribution.DomainName }
