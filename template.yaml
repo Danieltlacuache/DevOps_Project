@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: CondoManager Pro - Infraestructura Escalable con CDN y Observabilidad
+Description: CondoManager Pro
 
 Globals:
   Function:
@@ -16,6 +16,7 @@ Globals:
         UNITS_TABLE: !Ref UnitsTable
         ADMIN_TOKENS_TABLE: !Ref AdminTokensTable
         CONNECTIONS_TABLE: !Ref ConnectionsTable
+        MAINTENANCE_TASKS_TABLE: !Ref MaintenanceTasksTable # NUEVA VARIABLE PARA MANTENIMIENTO
         PHOTOS_BUCKET: !Ref CondoPhotosBucket
         SECRET_ID: "CondoManager/JWT_Secret"
         WEBSOCKET_URL: !Sub "https://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
@@ -34,13 +35,9 @@ Resources:
         AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
         AllowHeaders: "'*'"
         AllowOrigin: "'*'"
-      MethodSettings:
-        - MetricsEnabled: true
-          ResourcePath: "/*"
-          HttpMethod: "*"
 
   # ==============================================================================
-  # 2. FUNCIÓN LAMBDA CENTRAL
+  # 2. FUNCIÓN LAMBDA PRINCIPAL (MONOLITO ESCALABLE)
   # ==============================================================================
   CondoManagerFunction:
     Type: AWS::Serverless::Function
@@ -52,9 +49,8 @@ Resources:
         - AmazonDynamoDBFullAccess
         - AmazonS3FullAccess
         - SecretsManagerReadWrite
-        - AWSStepFunctionsFullAccess
-        - AmazonAPIGatewayInvokeFullAccess # Permiso crucial para WebSockets
-        - "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+        - AmazonAPIGatewayInvokeFullAccess
+        - "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess" # PERMISO PARA OBSERVABILIDAD
       Events:
         CondoApi:
           Type: Api
@@ -64,37 +60,12 @@ Resources:
             Method: ANY
 
   # ==============================================================================
-  # 3. BASE DE DATOS (DYNAMODB) CON JERARQUÍA
+  # 3. BASE DE DATOS (DYNAMODB) - TEOREMA CAP Y ALGORITMOS
   # ==============================================================================
   UsersTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
       PrimaryKey: { Name: email, Type: String }
-
-  CondosTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-        - AttributeName: popularidad
-          AttributeType: N
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
-      GlobalSecondaryIndexes:
-        - IndexName: PopularityIndex
-          KeySchema:
-            - AttributeName: popularidad
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-
-  UnitsTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey: { Name: id, Type: String }
 
   ResidentsTable:
     Type: AWS::Serverless::SimpleTable
@@ -111,8 +82,39 @@ Resources:
     Properties:
       PrimaryKey: { Name: connectionId, Type: String }
 
+  UnitsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey: { Name: id, Type: String }
+
+  # NUEVA TABLA PARA GESTIÓN DE MANTENIMIENTO
+  MaintenanceTasksTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey: { Name: id, Type: String }
+
+  CondosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: popularidad
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: PopularityIndex # APLICACIÓN ALGORITMO: Orden por popularidad
+          KeySchema:
+            - AttributeName: popularidad
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
   # ==============================================================================
-  # 4. CDN Y ALMACENAMIENTO (S3 + CLOUDFRONT)
+  # 4. ALMACENAMIENTO Y DISTRIBUCIÓN DE CONTENIDO (S3 + CLOUDFRONT)
   # ==============================================================================
   CondoPhotosBucket:
     Type: AWS::S3::Bucket
@@ -126,23 +128,11 @@ Resources:
             AllowedMethods: [GET, PUT, POST, DELETE]
             AllowedOrigins: ['*']
 
-  CondoPhotosBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref CondoPhotosBucket
-      PolicyDocument:
-        Statement:
-          - Effect: Allow
-            Action: 's3:GetObject'
-            Resource: !Sub 'arn:aws:s3:::${CondoPhotosBucket}/*'
-            Principal: '*'
-
   CondoCloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: "CDN para fotos de CondoManager Pro"
         Origins:
           - DomainName: !GetAtt CondoPhotosBucket.DomainName
             Id: S3Origin
@@ -152,14 +142,14 @@ Resources:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
           AllowedMethods: [GET, HEAD, OPTIONS]
-          CachedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
           ForwardedValues:
             QueryString: false
             Cookies:
               Forward: none
 
   # ==============================================================================
-  # 5. WEBSOCKET API (TIEMPO REAL)
+  # 5. COMUNICACIÓN EN TIEMPO REAL (WEBSOCKETS)
   # ==============================================================================
   CondoWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
@@ -214,6 +204,9 @@ Outputs:
   ApiUrl:
     Description: "URL de la API REST"
     Value: !Sub "https://${CondoRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  WebSocketUrl:
+    Description: "URL del WebSocket"
+    Value: !Sub "wss://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
   CDNUrl:
-    Description: "Dominio de la CDN (CloudFront)"
+    Description: "URL de la CDN (CloudFront)"
     Value: !GetAtt CondoCloudFrontDistribution.DomainName

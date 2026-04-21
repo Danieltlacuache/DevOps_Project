@@ -1,93 +1,121 @@
-# Serverless Login with JWT and DynamoDB
+🏢 CondoManager Pro - Sistema de Gestión Escalable
+Este proyecto es una plataforma integral para la gestión de condominios, unidades y mantenimiento, construida sobre una arquitectura Serverless en AWS. Permite el manejo de roles (Admin, Residente, Mantenimiento), pagos simulados, actualizaciones en tiempo real vía WebSockets y entrega de contenido mediante CDN.
 
-This is a serverless application using AWS Lambda, API Gateway, and DynamoDB for user authentication with JWT.
+🚀 Requisitos Previos
+Antes de empezar, asegúrate de tener instalado lo siguiente:
 
-## Prerequisites
+AWS CLI configurado con tus credenciales (aws configure).
 
-- AWS CLI configured with appropriate permissions
-- AWS SAM CLI installed (download from https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
-- Python 3.9+ for local testing
-- AWS Secrets Manager configured (see secrets-setup.md)
+AWS SAM CLI para el despliegue de infraestructura.
 
-## Deployment
+Python 3.10 o superior.
 
-1. **Configure AWS Secrets Manager**:
-   Follow the instructions in `secrets-setup.md` to create the JWT secret.
+Node.js (opcional, para usar un servidor local para el frontend).
 
-2. Install dependencies (for local testing):
-   ```
-   pip install -r requirements.txt
-   ```
+Una cuenta de AWS activa.
 
-3. Build and deploy with SAM:
-   ```
-   sam build
-   sam deploy --guided
-   ```
+🛠️ Paso 1: Configuración de Secretos (JWT)
+El sistema utiliza AWS Secrets Manager para manejar la firma de los tokens de seguridad.
 
-   During deployment, the Lambda function will automatically retrieve the JWT secret from Secrets Manager.
+Ve a la consola de AWS -> Secrets Manager.
 
-## Testing
+Crea un nuevo secreto de tipo "Otro tipo de secreto".
 
-### Local Frontend Testing
-To test the HTML interface locally (without API calls working yet):
+Usa el nombre: CondoManager/JWT_Secret.
 
-1. Start a local server:
-   ```
-   python -m http.server 8000
-   ```
-2. Open http://localhost:8000 in your browser.
-3. The forms will show, but API calls will fail until you deploy and update the API URL.
+Agrega un par llave/valor:
 
-### API Testing
-After deployment:
+Llave: JWT_KEY
 
-1. Get the API URL from the SAM output.
-2. Update `API_BASE_URL` in `script.js` with your API Gateway URL.
-3. Test endpoints with curl:
+Valor: TuPalabraSecretaSuperSegura (puedes poner lo que quieras).
 
-   Register:
-   ```
-   curl -X POST https://your-api-url/auth/register \
-     -H "Content-Type: application/json" \
-     -d '{"email":"test@example.com","password":"password123"}'
-   ```
+Guarda el secreto.
 
-   Login:
-   ```
-   curl -X POST https://your-api-url/auth/login \
-     -H "Content-Type: application/json" \
-     -d '{"email":"test@example.com","password":"password123"}'
-   ```
+📦 Paso 2: Despliegue de la Infraestructura (Backend)
+Todo el backend se despliega automáticamente usando el archivo template.yaml.
 
-4. Or use Postman/Insomnia to test the endpoints.
+Abre una terminal en la carpeta raíz del proyecto.
 
-### Full Testing
-1. Deploy the backend.
-2. Update the frontend with the API URL.
-3. Serve the frontend (e.g., upload to S3 for static hosting).
-4. Test registration and login through the web interface.
+Ejecuta el comando para compilar:
 
-## Frontend
+Bash
+sam build
+Ejecuta el despliegue guiado:
 
-The HTML files provide separate pages for login and registration:
-- `index.html`: Login page with link to registration.
-- `register.html`: Registration page with link back to login.
-- `styles.css`: Shared styles.
-- `script.js`: Handles login form.
-- `register.js`: Handles registration form.
+Bash
+sam deploy --guided
+Configuración del despliegue:
 
-To use them:
-1. After deployment, update `API_BASE_URL` in both `script.js` and `register.js` with your API Gateway URL.
-2. Serve the HTML files from a web server (e.g., S3 static website).
+Stack Name: CondoManagerStack
 
-## API Endpoints
+AWS Region: us-east-2 (recomendada por la latencia en ITESO).
 
-- POST /auth/register: Register a new user. Body: { "email": "user@example.com", "password": "password" }
-- POST /auth/login: Login. Body: { "email": "user@example.com", "password": "password" } Returns JWT token.
+Confirm changes before deploy: Yes.
 
-## Notes
+Allow SAM CLI IAM role creation: Yes.
 
-- Passwords are hashed using bcrypt.
-- JWT expires in 1 hour.
-- The DynamoDB table 'Users' is created automatically with the deployment.
+Disable rollback: No.
+
+Acepta los permisos de CondoManagerFunction para que sea pública.
+
+IMPORTANTE: Al finalizar, SAM te entregará unos Outputs. Copia estos valores, los necesitarás para el frontend:
+
+ApiUrl
+
+WebSocketUrl
+
+CDNUrl
+
+💻 Paso 3: Configuración del Frontend
+Ahora debemos conectar la interfaz con tu nueva infraestructura en la nube.
+
+Abre el archivo dashboard.js y script.js.
+
+Busca la variable AWS_PROD_URL al inicio de los archivos.
+
+Reemplaza el valor con la ApiUrl que te dio SAM (asegúrate de que termine en /Prod/).
+
+El sistema detectará automáticamente el WebSocketUrl mediante el endpoint de /config, pero asegúrate de que el bucket de S3 tenga las imágenes que subas.
+
+🔑 Paso 4: Creación del Primer Administrador
+Para poder usar el sistema, necesitas una cuenta de Admin.
+
+El sistema tiene un "Super User" por defecto definido en el código como admin@admin.com.
+
+Para registrarte como admin:
+
+Ve a la consola de AWS -> DynamoDB.
+
+Busca la tabla AdminTokensTable.
+
+Crea un nuevo ítem manual:
+
+token: LLAVE-MAESTRA-PRO (o el nombre que quieras).
+
+used: false (booleano).
+
+type: admin.
+
+Ve a register.html en tu navegador, ingresa tus datos y en el campo de "Token" usa la llave que creaste.
+
+🛠️ Paso 5: Ejecución
+Puedes correr el frontend simplemente abriendo los archivos .html o usando la extensión Live Server de VS Code.
+
+Admin: Crea condominios, sube fotos (que se guardarán en S3 y se servirán por CloudFront), crea unidades y asigna tareas de mantenimiento.
+
+Residente: Explora unidades (afecta la popularidad/algoritmo de ordenamiento), reserva con el sistema de pagos y ve sus rentas activas.
+
+Mantenimiento: Registra un técnico con un token generado por el Admin (MAINT-XXXX) y gestiona los estados de las reparaciones.
+
+📊 Conceptos de Ingeniería Aplicados (Para tu reporte)
+Si te preguntan qué hace especial a este proyecto, menciona esto:
+
+Observabilidad: Implementamos AWS X-Ray para el rastreo de trazas distribuidas.
+
+Teorema CAP: Usamos ConsistentRead=True en DynamoDB para garantizar consistencia fuerte en el login.
+
+CDN: Las imágenes no se sirven desde S3, sino desde nodos de borde (Edge) vía CloudFront para reducir latencia.
+
+Tiempo Real: Arquitectura orientada a eventos usando WebSockets para sincronizar vistas sin refrescar.
+
+Limpieza Asíncrona: Lógica de "Lazy Cleanup" para liberar unidades cuando expira la reserva.
