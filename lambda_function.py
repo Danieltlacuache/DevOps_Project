@@ -39,7 +39,7 @@ def safe_str(val):
 
 def response(status, body):
     return {
-        'statusCode': status, 'headers': { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' },
+        'statusCode': status, 'headers': { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type,Authorization', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' },
         'body': json.dumps(body, default=str)
     }
 
@@ -129,7 +129,7 @@ def lambda_handler(event, context):
             else: return response(200, sorted(FEES_TABLE.scan().get('Items', []), key=lambda x: safe_str(x.get('fecha_creacion')), reverse=True))
         if m == 'POST' and user['role'] == 'admin':
             data = json.loads(event['body'])
-            fee = {'id': str(uuid.uuid4()), 'email': data['email'], 'monto': Decimal(str(data['monto'])), 'mes': data['mes'], 'estado': 'Pendiente', 'fecha_creacion': datetime.datetime.utcnow().isoformat()}
+            fee = {'id': str(uuid.uuid4()), 'email': data['email'], 'monto': Decimal(str(data['monto'])), 'mes': data['mes'], 'estado': 'Pendiente', 'fecha_creacion': datetime.datetime.utcnow().isoformat(), 'detalles': 'Cuota Manual Administrativa'}
             FEES_TABLE.put_item(Item=fee)
             notify_clients({'action': 'REFRESH_FEES'})
             return response(201, fee)
@@ -174,11 +174,16 @@ def lambda_handler(event, context):
                 my_incidents = [i for i in all_incidents if i.get('residente') == user['email']]
                 return response(200, my_incidents)
             
-        if m == 'DELETE' and user['role'] == 'admin':
+        if m == 'DELETE':
             data = json.loads(event['body'])
-            INCIDENTS_TABLE.delete_item(Key={'id': data['id']})
-            notify_clients({'action': 'REFRESH_INCIDENTS'})
-            return response(200, {'msg': 'Incidente borrado'})
+            inc = INCIDENTS_TABLE.get_item(Key={'id': data['id']}).get('Item')
+            if not inc: return response(404, {'msg': 'No existe'})
+            
+            if user['role'] == 'admin' or (user['role'] == 'residente' and inc['residente'] == user['email'] and inc['estado'] in ['Resuelto', 'Completado']):
+                INCIDENTS_TABLE.delete_item(Key={'id': data['id']})
+                notify_clients({'action': 'REFRESH_INCIDENTS'})
+                return response(200, {'msg': 'Incidente borrado'})
+            return response(403, {'msg': 'No tienes permiso o el incidente no está completado.'})
 
     if p == '/admin/token' and m == 'POST':
         if user.get('role') != 'admin': return response(403, {'msg': 'No autorizado'})
@@ -274,44 +279,45 @@ def lambda_handler(event, context):
 
     if p == '/units':
         if m == 'GET': return list_units(event, user)
-        if m == 'PATCH' and user['role'] == 'admin':
+        if m == 'PATCH':
             data = json.loads(event['body'])
             action = data.get('action')
             
-            if action == 'edit':
-                UNITS_TABLE.update_item(Key={'id': data['id']}, UpdateExpression="SET nombre = :n, precio = :p", ExpressionAttributeValues={':n': data['nombre'], ':p': Decimal(str(data['precio']))})
-            
-            elif action == 'delete':
-                unit = UNITS_TABLE.get_item(Key={'id': data['id']}).get('Item')
-                if unit and unit.get('estado') == 'Ocupado':
-                    return response(400, {'msg': 'No puedes ocultar una unidad que está OCUPADA. Primero debes desocuparla.'})
-                UNITS_TABLE.update_item(Key={'id': data['id']}, UpdateExpression="SET borrado_logico = :b", ExpressionAttributeValues={':b': True})
-            
-            elif action == 'activate':
-                UNITS_TABLE.update_item(Key={'id': data['id']}, UpdateExpression="SET borrado_logico = :b", ExpressionAttributeValues={':b': False})
-            
-            elif action == 'evict':
-                unit_id = data['id']
+            if user['role'] == 'admin':
+                if action == 'edit':
+                    UNITS_TABLE.update_item(Key={'id': data['id']}, UpdateExpression="SET nombre = :n, precio = :p", ExpressionAttributeValues={':n': data['nombre'], ':p': Decimal(str(data['precio']))})
                 
-                # 1. ELIMINAR EL CONTRATO EN DYNAMODB PARA EVITAR REGISTROS "FANTASMAS"
+                elif action == 'delete':
+                    unit = UNITS_TABLE.get_item(Key={'id': data['id']}).get('Item')
+                    if unit and unit.get('estado') == 'Ocupado': return response(400, {'msg': 'No puedes ocultar una unidad que está OCUPADA. Primero debes desocuparla.'})
+                    UNITS_TABLE.update_item(Key={'id': data['id']}, UpdateExpression="SET borrado_logico = :b", ExpressionAttributeValues={':b': True})
+                
+                elif action == 'activate':
+                    UNITS_TABLE.update_item(Key={'id': data['id']}, UpdateExpression="SET borrado_logico = :b", ExpressionAttributeValues={':b': False})
+                
+                elif action == 'start_evict':
+                    UNITS_TABLE.update_item(
+                        Key={'id': data['id']}, 
+                        UpdateExpression="SET estado = :s, motivo_desalojo = :m", 
+                        ExpressionAttributeValues={':s': 'En Espera', ':m': data.get('motivo', 'Decisión Administrativa')}
+                    )
+            
+            elif user['role'] == 'residente' and action == 'confirm_evict':
+                unit_id = data['id']
                 reservations = RESIDENTS_TABLE.scan(FilterExpression=Attr('unit_id').eq(unit_id)).get('Items', [])
-                now_utc = datetime.datetime.utcnow().isoformat()
                 for r in reservations:
-                    # Si el contrato estaba activo, lo eliminamos de la tabla
-                    if safe_str(r.get('fecha_fin')) > now_utc:
-                        RESIDENTS_TABLE.delete_item(Key={'id': r['id']})
-
-                # 2. LIMPIAR LA UNIDAD
+                    if r.get('email') == user['email']: RESIDENTS_TABLE.delete_item(Key={'id': r['id']})
+                
                 UNITS_TABLE.update_item(
                     Key={'id': unit_id}, 
-                    UpdateExpression="SET estado = :s, ocupado_por = :empty, fecha_inicio = :empty, fecha_fin = :empty", 
+                    UpdateExpression="SET estado = :s, ocupado_por = :empty, fecha_inicio = :empty, fecha_fin = :empty, motivo_desalojo = :empty", 
                     ExpressionAttributeValues={':s': 'Disponible', ':empty': ''}
                 )
             
             notify_clients({'action': 'REFRESH_UNITS', 'condo_id': data.get('condo_id')}) 
             return response(200, {'msg': 'Operación exitosa'})
             
-        if m == 'POST':
+        if m == 'POST' and user['role'] == 'admin':
             data = json.loads(event['body'])
             if UNITS_TABLE.scan(FilterExpression=Attr('nombre').eq(data['nombre']) & Attr('condo_id').eq(data['condo_id'])).get('Items'): 
                 return response(400, {'msg': 'Ya existe una unidad con ese nombre en este edificio.'})
@@ -332,25 +338,29 @@ def lambda_handler(event, context):
             if end_date and start_date and end_date > req_start and start_date < req_end:
                 return response(400, {'msg': 'No puedes reservar: Ya tienes un contrato activo que choca con estas fechas.'})
 
+        # Almacenamos los datos para generar el historial de cuotas detallado
+        unit = UNITS_TABLE.get_item(Key={'id': data['unit_id']}).get('Item', {})
+        condo_name = CONDOS_TABLE.get_item(Key={'id': unit.get('condo_id')}).get('Item', {}).get('nombre', 'Condominio')
+        detalle_cuota = f"Unidad: {unit.get('nombre')} - {condo_name}"
+
         RESIDENTS_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'email': user['email'], 'unit_id': data['unit_id'], 'total': Decimal(str(data['total'])), 'fecha_inicio': req_start, 'fecha_fin': req_end, 'fecha': datetime.datetime.utcnow().isoformat()})
         UNITS_TABLE.update_item(Key={'id': data['unit_id']}, UpdateExpression="SET estado = :s, ocupado_por = :u, fecha_inicio = :fi, fecha_fin = :ff", ExpressionAttributeValues={':s': 'Ocupado', ':u': user['email'], ':fi': req_start, ':ff': req_end})
         
-        FEES_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'email': user['email'], 'monto': Decimal(str(data['total'])), 'mes': 'Primera Cuota - ' + datetime.datetime.utcnow().strftime('%B %Y'), 'estado': 'Pendiente', 'fecha_creacion': datetime.datetime.utcnow().isoformat()})
+        # Guardamos la primera cuota YA PAGADA automáticamente
+        FEES_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'email': user['email'], 'monto': Decimal(str(data['total'])), 'mes': 'Pago de Reserva Inicial', 'estado': 'Pagado', 'fecha_creacion': datetime.datetime.utcnow().isoformat(), 'fecha_pago': datetime.datetime.utcnow().isoformat(), 'detalles': detalle_cuota})
         
         notify_clients({'action': 'REFRESH_UNITS', 'condo_id': data.get('condo_id')})
         notify_clients({'action': 'REFRESH_FEES'}) 
-        return response(200, {'msg': 'Contrato firmado. Cuota generada.'})
+        return response(200, {'msg': 'Contrato firmado y pago procesado.'})
 
     if p == '/units/my-reservations' and m == 'GET':
-        clean_expired_reservations() 
         now_utc = datetime.datetime.utcnow().isoformat()
         res = RESIDENTS_TABLE.scan(FilterExpression=Attr('email').eq(user['email'])).get('Items', [])
         activas = []
         for r in res:
-            end_date = safe_str(r.get('fecha_fin'))
-            if end_date and end_date > now_utc:
-                unit = UNITS_TABLE.get_item(Key={'id': r['unit_id']}).get('Item', {})
-                if unit: unit['condo_name'] = CONDOS_TABLE.get_item(Key={'id': unit['condo_id']}).get('Item', {}).get('nombre', 'Condominio')
+            unit = UNITS_TABLE.get_item(Key={'id': r['unit_id']}).get('Item', {})
+            if unit: 
+                unit['condo_name'] = CONDOS_TABLE.get_item(Key={'id': unit['condo_id']}).get('Item', {}).get('nombre', 'Condominio')
                 r['unit_details'] = unit
                 activas.append(r)
         return response(200, activas)
