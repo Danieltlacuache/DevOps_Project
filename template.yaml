@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: CondoManager Pro - Infraestructura Final (100% SRS Compliant)
+Description: CondoManager Pro
 
 Globals:
   Function:
@@ -20,6 +20,10 @@ Globals:
         ANNOUNCEMENTS_TABLE: !Ref AnnouncementsTable
         INCIDENTS_TABLE: !Ref IncidentsTable
         FEES_TABLE: !Ref FeesTable
+        # --- AQUI ESTAN LAS VARIABLES NUEVAS DE AMENIDADES ---
+        AMENITIES_TABLE: !Ref AmenitiesTable
+        AMENITY_RESERVATIONS_TABLE: !Ref AmenityReservationsTable
+        # -----------------------------------------------------
         PHOTOS_BUCKET: !Ref CondoPhotosBucket
         SECRET_ID: "CondoManager/JWT_Secret"
         WEBSOCKET_URL: !Sub "https://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
@@ -74,6 +78,11 @@ Resources:
   AnnouncementsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
   IncidentsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
   FeesTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  
+  # --- AQUÍ ESTÁN LAS TABLAS NUEVAS DE AMENIDADES ---
+  AmenitiesTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  AmenityReservationsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
+  # --------------------------------------------------
 
   CondosTable:
     Type: AWS::DynamoDB::Table
@@ -100,7 +109,7 @@ Resources:
       CorsConfiguration:
         CorsRules: [{ AllowedHeaders: ['*'], AllowedMethods: [GET, PUT, POST, DELETE], AllowedOrigins: ['*'] }]
 
-  # NUEVO: Política que hace público el bucket automáticamente al desplegar
+  # Política que hace público el bucket automáticamente al desplegar
   CondoPhotosBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:

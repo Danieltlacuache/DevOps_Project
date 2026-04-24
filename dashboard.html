@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CondoManager Pro | Dashboard</title>
-    
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏢</text></svg>">
-    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -22,13 +20,13 @@
     </header>
 
     <main class="container">
-
         <section id="admin-section" style="display: none;">
             <div class="tabs-nav">
                 <button id="tab-admin-propiedades" class="tab-btn active" onclick="switchAdminTab('propiedades')">🏢 Propiedades</button>
-                <button id="tab-admin-reportes" class="tab-btn" onclick="switchAdminTab('reportes')">🚨 Reportes de Fallas</button>
+                <button id="tab-admin-amenidades" class="tab-btn" onclick="switchAdminTab('amenidades')">🏊 Amenidades</button>
+                <button id="tab-admin-reportes" class="tab-btn" onclick="switchAdminTab('reportes')">🚨 Reportes</button>
                 <button id="tab-admin-comunidad" class="tab-btn" onclick="switchAdminTab('comunidad')">📢 Comunidad</button>
-                <button id="tab-admin-ajustes" class="tab-btn" onclick="switchAdminTab('ajustes')" style="display: none;">⚙️ Panel Maestro</button>
+                <button id="tab-admin-ajustes" class="tab-btn" onclick="switchAdminTab('ajustes')" style="display:none; background:#fef08a; color:#854d0e;">⚙️ Ajustes (Super)</button>
             </div>
 
             <div id="view-admin-propiedades">
@@ -36,118 +34,148 @@
                     <div class="card" style="max-width: 600px; margin: 0 auto; width: 100%;">
                         <h3>🏢 Registrar Nuevo Edificio</h3>
                         <form id="add-condo-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div class="form-group" style="grid-column: span 1;">
-                                <label for="condo-nombre">Nombre del Edificio</label>
-                                <input type="text" id="condo-nombre" placeholder="Ej: Torre Américas" required>
-                            </div>
-                            <div class="form-group" style="grid-column: span 1;">
-                                <label for="condo-direccion">Ubicación / Dirección</label>
-                                <input type="text" id="condo-direccion" placeholder="Ej: Av. Vallarta 123" required>
-                            </div>
-                            <div class="form-group" style="grid-column: span 2;">
-                                <label for="condo-file">Fotografía del Inmueble</label>
-                                <input type="file" id="condo-file" accept="image/*" required>
-                            </div>
+                            <input type="text" id="condo-nombre" placeholder="Nombre del Edificio" required>
+                            <input type="text" id="condo-direccion" placeholder="Dirección Completa" required>
+                            <input type="file" id="condo-file" accept="image/*" required style="grid-column: span 2;">
                             <button type="submit" class="btn-primary" style="grid-column: span 2;">Registrar Edificio</button>
                         </form>
                     </div>
-                    
                     <div class="card" style="width: 100%;">
-                        <h3 style="margin-bottom: 20px;">📋 Inventario de Condominios</h3>
+                        <h3 style="margin-bottom: 20px;">📋 Condominios Activos</h3>
                         <div id="condos-list-admin" class="grid-layout"></div>
-                        
-                        <h3 style="margin-top: 40px; margin-bottom: 20px; color:#94a3b8;">🚫 Archivo (Ocultos / Inactivos)</h3>
+                        <h3 style="margin-top: 40px; margin-bottom: 20px; color:#94a3b8;">🚫 Archivo (Ocultos)</h3>
                         <div id="condos-list-inactive" class="grid-layout" style="opacity: 0.7;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-admin-amenidades" style="display: none;">
+                <div class="card" style="max-width: 600px; margin: 0 auto 20px auto;">
+                    <h3>🏊 Crear Amenidad</h3>
+                    <form id="add-amenity-form">
+                        <select id="amenity-condo-id" required style="width:100%; padding:10px; margin-bottom:10px;">
+                            <option value="">Selecciona Edificio...</option>
+                        </select>
+                        <input type="text" id="amenity-nombre" placeholder="Ej: Terraza BBQ, Alberca, Gimnasio" required style="width:100%; padding:10px; margin-bottom:10px;">
+                        <button type="submit" class="btn-primary">Añadir Amenidad</button>
+                    </form>
+                </div>
+                <div class="grid-layout">
+                    <div class="card">
+                        <h3>📖 Catálogo de Amenidades</h3>
+                        <div id="admin-amenities-list"></div>
+                    </div>
+                    <div class="card">
+                        <h3>📅 Reservas Activas de Residentes</h3>
+                        <div id="admin-amenities-reservations"></div>
                     </div>
                 </div>
             </div>
 
             <div id="view-admin-reportes" style="display: none;">
                 <div class="card" style="width: 100%;">
-                    <h3 style="margin-bottom: 20px;">⚠️ Buzón de Incidentes Activos</h3>
                     <div id="incidents-admin-container"></div>
                 </div>
             </div>
 
             <div id="view-admin-comunidad" style="display: none;">
                 <div class="card" style="max-width: 700px; margin: 0 auto; width: 100%;">
-                    <h3>📢 Tablón de Anuncios</h3>
-                    <button onclick="document.getElementById('announcement-modal').style.display='flex'" class="btn-primary" style="margin-bottom:20px;">Crear Comunicado para Residentes</button>
-                    <div id="admin-announcements-list" style="max-height: 500px; overflow-y:auto; border-top:1px solid #e2e8f0; padding-top:15px;"></div>
+                    <button onclick="document.getElementById('announcement-modal').style.display='flex'" class="btn-primary">Crear Comunicado General</button>
+                    <div id="admin-announcements-list" style="margin-top: 20px;"></div>
                 </div>
             </div>
 
             <div id="view-admin-ajustes" style="display: none;">
-                <div class="card master-card" style="max-width: 600px; margin: 0 auto; width: 100%; padding: 35px;">
-                    <h3 style="color: white; margin-top: 0; display:flex; align-items:center; gap:12px;"><span>👑</span> Panel de Control Maestro</h3>
-                    <p style="color: #e2e8f0; font-size: 0.95rem; margin-bottom: 25px;">Genera invitaciones únicas para expandir tu equipo de trabajo.</p>
-                    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                        <button onclick="createInviteToken('admin')" class="btn-secondary" style="flex: 1; border:none;">🔑 Generar Token Admin</button>
-                        <button onclick="createInviteToken('mantenimiento')" class="btn-secondary" style="flex: 1; border:none;">🛠️ Generar Token Técnico</button>
+                <div class="card" style="max-width: 600px; margin: 0 auto;">
+                    <h3>⚙️ Panel de Súper Usuario</h3>
+                    <p>Genera tokens para invitar a nuevo personal a la plataforma.</p>
+                    <div style="display: flex; gap: 15px; margin-top: 20px;">
+                        <button onclick="createInviteToken('admin')" class="btn-primary" style="flex:1;">🔑 Token Nuevo Admin</button>
+                        <button onclick="createInviteToken('mantenimiento')" class="btn-primary" style="flex:1; background:#f59e0b;">🛠️ Token Mantenimiento</button>
                     </div>
                 </div>
             </div>
         </section>
 
+        <section id="mantenimiento-section" style="display: none;">
+            <div class="card">
+                <h3>🛠️ Mis Tareas Asignadas</h3>
+                <div id="tasks-container" style="margin-top: 20px;"></div>
+            </div>
+        </section>
 
         <section id="residente-section" style="display: none;">
             <div class="tabs-nav">
-                <button id="tab-market" class="tab-btn active" onclick="switchTab('market')">🛒 Explorar Mercado</button>
-                <button id="tab-reservas" class="tab-btn" onclick="switchTab('reservas')">🔑 Mis Unidades</button>
+                <button id="tab-market" class="tab-btn active" onclick="switchTab('market')">🛒 Explorar</button>
+                <button id="tab-reservas" class="tab-btn" onclick="switchTab('reservas')">🔑 Mis Propiedades</button>
+                <button id="tab-amenidades-res" class="tab-btn" onclick="switchTab('amenidades-res')">🏊 Amenidades</button>
                 <button id="tab-finanzas" class="tab-btn" onclick="switchTab('finanzas')">💰 Finanzas</button>
-                <button id="tab-comunidad" class="tab-btn" onclick="switchTab('comunidad')">📢 Comunidad & Fallas</button>
+                <button id="tab-comunidad" class="tab-btn" onclick="switchTab('comunidad')">📢 Comunidad</button>
             </div>
             
             <div id="view-market">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-                    <h3 id="market-title" style="margin:0;">Edificios Disponibles</h3>
+                    <h3 id="market-title">Edificios Disponibles</h3>
                     <button id="btn-back-to-condos" class="btn-secondary" style="display:none;" onclick="loadResidenteDashboard()">⬅ Volver a Edificios</button>
                 </div>
                 <div id="available-grid" class="grid-layout"></div>
             </div>
 
             <div id="view-reservas" style="display: none;">
-                <h3 style="margin-top:20px; margin-bottom: 25px;">🔑 Unidades bajo mi Contrato</h3>
-                <div id="my-reservas-grid"></div> 
+                <h3 style="margin-top:20px;">🔑 Mis Unidades</h3>
+                <div id="my-reservas-grid"></div>
+            </div>
+            
+            <div id="view-amenidades-res" style="display: none;">
+                <div class="card" style="max-width: 600px; margin: 0 auto 20px auto;">
+                    <h3>Reservar Amenidad</h3>
+                    <p style="color:#64748b; font-size:0.9rem;">Las reservas son gratuitas pero tienen un límite máximo de 8 horas. Solo verás las de tu edificio.</p>
+                    <form id="reserve-amenity-form" style="margin-top: 20px;">
+                        <select id="res-amenity-select" required style="width:100%; padding:10px; margin-bottom:15px;"><option value="">Cargando...</option></select>
+                        <div style="display:flex; gap:10px; margin-bottom:15px;">
+                            <div style="flex:1;">
+                                <label>Inicio:</label>
+                                <input type="datetime-local" id="am-start" required style="width:100%; padding:8px;">
+                            </div>
+                            <div style="flex:1;">
+                                <label>Fin:</label>
+                                <input type="datetime-local" id="am-end" required style="width:100%; padding:8px;">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary" style="background:#0ea5e9; width:100%;">Confirmar Reserva</button>
+                    </form>
+                </div>
+                
+                <div class="card" style="max-width: 600px; margin: 0 auto;">
+                    <h3>Mis Reservas Activas</h3>
+                    <div id="res-amenities-reservations"></div>
+                </div>
             </div>
 
             <div id="view-finanzas" style="display: none;">
-                <h3 style="margin-top:20px; margin-bottom: 15px;">⏳ Pagos por Realizar</h3>
-                <div id="my-fees-pendientes" style="margin-bottom: 40px;"></div> 
-                
-                <h3 style="margin-bottom: 15px; color:#475569;">✅ Historial de Transacciones</h3>
-                <div id="my-fees-pagadas"></div> 
+                <h3 style="margin-top:20px;">⏳ Pagos Pendientes</h3><div id="my-fees-pendientes"></div> 
+                <h3 style="margin-top:30px;">✅ Historial de Pagos</h3><div id="my-fees-pagadas"></div> 
             </div>
 
             <div id="view-comunidad" style="display: none;">
-                <div class="card" style="border-left: 6px solid #6d28d9; margin-bottom: 40px;">
-                    <h3 style="margin: 0 0 20px 0;">📢 Noticias del Condominio</h3>
+                <div class="card">
+                    <h3 style="margin: 0 0 20px 0;">📢 Tablón de Anuncios</h3>
                     <div id="announcements-list"></div>
                 </div>
-
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                    <h3 style="margin:0;">🛠️ Mis Reportes de Mantenimiento</h3>
-                    <button onclick="openIncidentModal()" class="btn-primary" style="background:#ef4444; width:auto; padding:10px 20px;">🚨 Reportar Falla</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin:20px 0;">
+                    <h3 style="margin:0;">🛠️ Mis Reportes de Falla</h3>
+                    <button onclick="openIncidentModal()" class="btn-primary" style="width:auto; padding:10px 20px;">🚨 Reportar Falla</button>
                 </div>
                 <div id="my-incidents-grid"></div>
             </div>
         </section>
-
-
-        <section id="mantenimiento-section" style="display: none;">
-            <div class="card master-card" style="margin-bottom: 25px;">
-                <h3 style="color: white; margin: 0;">🛠️ Órdenes de Trabajo Asignadas</h3>
-            </div>
-            <div id="tasks-container"></div>
-        </section>
     </main>
-
 
     <div id="unit-modal" class="modal">
         <div class="modal-content" style="max-width: 850px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <h3 style="margin:0;">Unidades en <span id="modal-condo-name" style="color:#2563eb;"></span></h3>
-                <button onclick="closeModal('unit-modal')" class="btn-action" style="font-size:2rem; line-height:1;">&times;</button>
+                <h3 style="margin:0;">Gestión de Unidades: <span id="modal-condo-name"></span></h3>
+                <button onclick="closeModal('unit-modal')" class="btn-action" style="font-size:2rem;">&times;</button>
             </div>
             <div id="units-container"></div>
         </div>
@@ -155,137 +183,165 @@
 
     <div id="add-unit-modal" class="modal">
         <div class="modal-content">
-            <h3>Nueva Unidad en <span id="modal-condo-unit-name"></span></h3>
+            <h3>Nueva Unidad</h3>
             <form id="add-unit-form">
                 <input type="hidden" id="modal-condo-id">
-                <div class="form-group">
-                    <label for="unit-nombre">Identificador (Ej: Interior 402)</label>
-                    <input type="text" id="unit-nombre" placeholder="Nombre o número" required>
-                </div>
-                <div class="form-group">
-                    <label for="unit-precio">Precio Mensual ($)</label>
-                    <input type="number" id="unit-precio" placeholder="Costo de renta" required>
-                </div>
-                <div class="form-group">
-                    <label for="unit-file">Foto de la Unidad</label>
-                    <input type="file" id="unit-file" accept="image/*" required>
-                </div>
-                <div style="display:flex; gap:12px; margin-top:25px;">
+                
+                <label>Identificador (Ej: Interior 402):</label>
+                <input type="text" id="unit-nombre" required style="margin-bottom:10px;">
+                
+                <label>Modalidad de la Unidad:</label>
+                <select id="unit-modalidad" required style="margin-bottom:10px; width: 100%; padding: 8px;">
+                    <option value="Renta">Para Renta Mensual</option>
+                    <option value="Venta">Para Venta (Propiedad)</option>
+                </select>
+                
+                <label>Precio ($):</label>
+                <input type="number" id="unit-precio" required style="margin-bottom:10px;">
+                
+                <label>Fotografía de la unidad:</label>
+                <input type="file" id="unit-file" accept="image/*" required style="margin-bottom:10px;">
+                
+                <div style="display:flex; gap:12px; margin-top:15px;">
                     <button type="submit" class="btn-primary" style="flex:2;">Guardar Unidad</button>
                     <button type="button" onclick="closeModal('add-unit-modal')" class="btn-secondary" style="flex:1;">Cancelar</button>
                 </div>
             </form>
         </div>
     </div>
-    
-    <div id="announcement-modal" class="modal">
-        <div class="modal-content">
-            <h3>Publicar Anuncio General</h3>
-            <form id="announcement-form">
-                <div class="form-group">
-                    <label for="ann-titulo">Título del Comunicado</label>
-                    <input type="text" id="ann-titulo" placeholder="Ej: Corte de agua programado" required>
-                </div>
-                <div class="form-group">
-                    <label for="ann-mensaje">Cuerpo del Mensaje</label>
-                    <textarea id="ann-mensaje" placeholder="Detalles para los residentes..." required style="height:120px;"></textarea>
-                </div>
-                <div style="display:flex; gap:12px; margin-top:20px;">
-                    <button type="submit" class="btn-primary" style="flex:1;">Publicar Ahora</button>
-                    <button type="button" onclick="closeModal('announcement-modal')" class="btn-secondary" style="flex:1;">Cancelar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <div id="incident-modal" class="modal">
-        <div class="modal-content">
-            <h3>Reportar Nueva Falla</h3>
-            <form id="incident-form">
-                <div class="form-group">
-                    <label for="incident-unit-id">¿En qué unidad es el problema?</label>
-                    <select id="incident-unit-id" required><option value="">Cargando...</option></select>
-                </div>
-                <div class="form-group">
-                    <label for="incident-desc">Descripción del Incidente</label>
-                    <textarea id="incident-desc" placeholder="Describe brevemente el fallo..." required style="height:100px;"></textarea>
-                </div>
-                <div style="display:flex; gap:12px; margin-top:20px;">
-                    <button type="submit" class="btn-primary" style="flex:1; background:#ef4444;">Enviar Reporte</button>
-                    <button type="button" onclick="closeModal('incident-modal')" class="btn-secondary" style="flex:1;">Cerrar</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
-    <div id="fee-pay-modal" class="modal">
+    <div id="edit-unit-modal" class="modal">
         <div class="modal-content">
-            <h3>Liquidar Cuota Pendiente</h3>
-            <form id="fee-pay-form">
-                <input type="hidden" id="pay-fee-id">
-                <div style="padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; margin-top:15px;">
-                    <h4 style="margin: 0 0 15px 0; font-size:0.9rem; text-transform:uppercase; color:#64748b;">💳 Pasarela de Pago Segura</h4>
-                    <input type="text" id="fee-pay-card" placeholder="Número de Tarjeta (16 dígitos)" maxlength="16" required style="margin-bottom:12px;">
-                    <div style="display: flex; gap: 12px;">
-                        <input type="text" id="fee-pay-exp" placeholder="MM/YY" maxlength="5" required style="flex:1;">
-                        <input type="password" id="fee-pay-cvv" placeholder="CVV" maxlength="4" required style="flex:1;">
+            <h3>Editar Unidad</h3>
+            <form id="edit-unit-form">
+                <input type="hidden" id="edit-unit-id">
+                <input type="hidden" id="edit-unit-condo-id">
+                
+                <label>Identificador:</label>
+                <input type="text" id="edit-unit-nombre" required style="margin-bottom:10px;">
+                
+                <label>Modalidad (Solo cambiable si está vacía):</label>
+                <select id="edit-unit-modalidad" required style="margin-bottom:10px; width: 100%; padding: 8px;">
+                    <option value="Renta">Para Renta (Mensual)</option>
+                    <option value="Venta">Para Venta (Pago Único)</option>
+                </select>
+                
+                <label>Precio ($):</label>
+                <input type="number" id="edit-unit-precio" required style="margin-bottom:20px;">
+                
+                <div style="display:flex; gap:12px;">
+                    <button type="submit" class="btn-primary" style="flex:2;">Guardar Cambios</button>
+                    <button type="button" onclick="closeModal('edit-unit-modal')" class="btn-secondary" style="flex:1;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="reserve-modal" class="modal">
+        <div class="modal-content">
+            <h3>Contratación de Unidad</h3>
+            <h4 id="reserve-unit-name" style="margin-top:0; color:#2563eb;"></h4>
+            <form id="reserve-form">
+                <input type="hidden" id="reserve-unit-id">
+                <input type="hidden" id="reserve-unit-price">
+                
+                <div style="display:flex; gap:15px; margin-bottom:20px;">
+                    <div style="flex:1;">
+                        <label>Fecha de Entrada:</label>
+                        <input type="datetime-local" id="reserve-start" required onchange="updatePaymentAviso()">
+                    </div>
+                    <div style="flex:1;">
+                        <label>Fecha de Salida (Solo Rentas):</label>
+                        <input type="datetime-local" id="reserve-end" required>
                     </div>
                 </div>
-                <div style="display:flex; gap:12px; margin-top:25px;">
-                    <button type="submit" id="btn-confirm-fee" class="btn-primary" style="flex:2; background: #059669;">Procesar Pago</button>
+                
+                <div style="padding: 20px; background: #eff6ff; border-radius: 12px; margin-bottom: 20px;">
+                    <p style="text-align: center; margin: 0 0 10px 0; font-weight: bold; color: #1e293b;">Total a Pagar Hoy:</p>
+                    <h2 id="reserve-total-display" style="margin:0; color: #2563eb; text-align:center; margin-bottom:20px;">$0.00</h2>
+                    
+                    <label>Número de Tarjeta</label>
+                    <input type="text" id="res-pay-card" placeholder="1234 5678 1234 5678" maxlength="16" required style="margin-bottom:15px;">
+                    
+                    <div style="display: flex; gap: 15px;">
+                        <div style="flex:1;">
+                            <label>Expiración (Mes y Año)</label>
+                            <input type="text" id="res-pay-exp" placeholder="MM/YY" maxlength="5" required>
+                        </div>
+                        <div style="flex:1;">
+                            <label>CVV</label>
+                            <input type="password" id="res-pay-cvv" placeholder="123" maxlength="3" required>
+                        </div>
+                    </div>
+                    
+                    <p id="aviso-pago-auto" style="font-size: 0.85rem; color: #0369a1; text-align: center; margin-top: 15px; font-weight: 600;">
+                        ℹ️ El pago automático se configurará según tu fecha de entrada.
+                    </p>
+                </div>
+                
+                <div style="display:flex; gap:12px;">
+                    <button type="submit" class="btn-primary" style="flex:2;" id="btn-confirm-reserve">Firmar y Pagar</button>
+                    <button type="button" onclick="closeModal('reserve-modal')" class="btn-secondary" style="flex:1;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="fee-pay-modal" class="modal">
+        <div class="modal-content">
+            <h3>Pasarela de Pago</h3>
+            <form id="fee-pay-form">
+                <input type="hidden" id="pay-fee-id">
+                
+                <label>Número de Tarjeta:</label>
+                <input type="text" id="fee-pay-card" placeholder="1234 5678 1234 5678" maxlength="16" required style="margin-bottom:15px;">
+                
+                <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                    <div style="flex:1;">
+                        <label>Expiración:</label>
+                        <input type="text" id="fee-pay-exp" placeholder="MM/YY" maxlength="5" required>
+                    </div>
+                    <div style="flex:1;">
+                        <label>CVV:</label>
+                        <input type="password" id="fee-pay-cvv" placeholder="123" maxlength="3" required>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:12px;">
+                    <button type="submit" class="btn-primary" id="btn-confirm-fee" style="flex:2;">Procesar Pago</button>
                     <button type="button" onclick="closeModal('fee-pay-modal')" class="btn-secondary" style="flex:1;">Cancelar</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <div id="reserve-modal" class="modal">
+    <div id="announcement-modal" class="modal">
         <div class="modal-content">
-            <h3>Confirmar Contrato y Pago de Reserva</h3>
-            <p style="margin-bottom:20px; font-size:0.95rem; color:#64748b;">Unidad seleccionada: <strong id="reserve-unit-name" style="color:#2563eb;"></strong></p>
-            
-            <form id="reserve-form">
-                <input type="hidden" id="reserve-unit-id"><input type="hidden" id="reserve-unit-price">
-                <div style="display:flex; gap:15px; margin-bottom:20px;">
-                    <div style="flex:1;">
-                        <label for="reserve-start">Fecha de Inicio</label>
-                        <input type="datetime-local" step="1" id="reserve-start" required onchange="updatePaymentAviso()">
-                    </div>
-                    <div style="flex:1;">
-                        <label for="reserve-end">Fecha de Fin</label>
-                        <input type="datetime-local" step="1" id="reserve-end" required>
-                    </div>
+            <h3>Publicar Comunicado</h3>
+            <form id="announcement-form">
+                <input type="text" id="ann-titulo" placeholder="Título del anuncio" required style="margin-bottom:10px;">
+                <textarea id="ann-mensaje" placeholder="Mensaje para los residentes..." required style="margin-bottom:20px; min-height: 100px;"></textarea>
+                <div style="display:flex; gap:12px;">
+                    <button type="submit" class="btn-primary" style="flex:2;">Publicar</button>
+                    <button type="button" onclick="closeModal('announcement-modal')" class="btn-secondary" style="flex:1;">Cancelar</button>
                 </div>
+            </form>
+        </div>
+    </div>
 
-                <div style="padding: 20px; background: #eff6ff; border-radius: 12px; border: 1px solid #bfdbfe;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h4 style="margin:0; color: #1e3a8a;">Suscripción Mensual</h4>
-                        <h2 id="reserve-total-display" style="margin:0; color: #2563eb;">$0.00</h2>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="res-pay-card">Número de Tarjeta</label>
-                        <input type="text" id="res-pay-card" placeholder="1234 5678 1234 5678" maxlength="16" required>
-                    </div>
-                    <div style="display: flex; gap: 15px;">
-                        <div style="flex:1;">
-                            <label for="res-pay-exp">Expiración</label>
-                            <input type="text" id="res-pay-exp" placeholder="MM/YY" maxlength="5" required>
-                        </div>
-                        <div style="flex:1;">
-                            <label for="res-pay-cvv">CVV</label>
-                            <input type="password" id="res-pay-cvv" placeholder="123" maxlength="4" required>
-                        </div>
-                    </div>
-                    
-                    <p id="aviso-pago-auto" style="font-size: 0.85rem; color: #0369a1; text-align: center; margin-top: 20px; font-weight: 600; line-height:1.4;">
-                        ℹ️ Se realizará un cobro inmediato y se generarán pagos automáticos cada mes.
-                    </p>
-                </div>
-
-                <div style="display:flex; gap:12px; margin-top:30px;">
-                    <button type="submit" class="btn-primary" style="flex:2; padding: 16px;" id="btn-confirm-reserve">Firmar y Pagar</button>
-                    <button type="button" onclick="closeModal('reserve-modal')" class="btn-secondary" style="flex:1;">Cancelar</button>
+    <div id="incident-modal" class="modal">
+        <div class="modal-content">
+            <h3>Reportar Falla o Incidente</h3>
+            <form id="incident-form">
+                <label>¿En qué unidad ocurre el problema?</label>
+                <select id="incident-unit-id" required style="margin-bottom:15px;"></select>
+                
+                <label>Descripción detallada de la falla:</label>
+                <textarea id="incident-desc" placeholder="Ej: Fuga de agua en el lavabo principal..." required style="margin-bottom:20px; min-height: 100px;"></textarea>
+                
+                <div style="display:flex; gap:12px;">
+                    <button type="submit" class="btn-primary" style="flex:2;">Enviar Reporte</button>
+                    <button type="button" onclick="closeModal('incident-modal')" class="btn-secondary" style="flex:1;">Cancelar</button>
                 </div>
             </form>
         </div>

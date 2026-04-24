@@ -1,4 +1,8 @@
-const API_BASE_URL = 'https://lbhl4mazt9.execute-api.us-east-2.amazonaws.com/Prod/';
+// ==============================================================================
+// CONFIGURACIÓN CENTRALIZADA
+// ==============================================================================
+// Tomamos la URL del config.js y le quitamos la barra final si la tiene
+const API_BASE_URL = ENV.AWS_API_URL.replace(/\/$/, "");
 
 /**
  * Muestra mensajes de feedback al usuario (éxito o error)
@@ -33,6 +37,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     try {
         console.log("Iniciando sesión...");
         
+        // El botón se deshabilita para evitar múltiples clics
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Conectando...";
+        
         const response = await fetch(`${API_BASE_URL}/auth/login`, {
             method: 'POST',
             headers: {
@@ -56,9 +66,14 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         } else {
             // CORRECCIÓN: Usamos data.msg porque así lo definimos en la Lambda profesional
             showMessage(data.msg || 'Credenciales inválidas', 'error');
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
     } catch (error) {
         console.error("Error en fetch:", error);
         showMessage('❌ Error de conexión con el servidor', 'error');
+        const btn = document.querySelector('#login-form button');
+        btn.disabled = false;
+        btn.textContent = "Iniciar Sesión";
     }
 });

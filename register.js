@@ -1,5 +1,8 @@
-// --- CONFIGURACIÓN ---
-const API_BASE_URL = 'https://lbhl4mazt9.execute-api.us-east-2.amazonaws.com/Prod/';
+// ==============================================================================
+// CONFIGURACIÓN CENTRALIZADA
+// ==============================================================================
+// Tomamos la URL del config.js y le quitamos la barra final si la tiene
+const API_BASE_URL = ENV.AWS_API_URL.replace(/\/$/, "");
 
 console.log("Script register.js cargado correctamente.");
 
@@ -31,22 +34,31 @@ document.getElementById('register-form')?.addEventListener('submit', async (e) =
     const email = document.getElementById('register-email').value.trim();
     const password = passInput.value;
     const confirmPassword = confirmInput.value;
-    const adminKey = document.getElementById('admin-key').value.trim();
+    const adminKey = document.getElementById('admin-key')?.value.trim();
 
-    // 1. Validaciones de Seguridad
     if (password !== confirmPassword) {
-        mostrarMensaje("Error: Las contraseñas no coinciden.", "error");
+        mostrarMensaje("❌ Las contraseñas no coinciden.", "error");
         return;
     }
 
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!emailRegex.test(email)) {
-        mostrarMensaje("Error: Introduce un correo válido.", "error");
+    if (password.length < 6) {
+        mostrarMensaje("❌ La contraseña es muy corta.", "error");
+        return;
+    }
+
+    if (!email.includes('@') || !email.includes('.')) {
+        mostrarMensaje("❌ Ingresa un correo válido.", "error");
         return;
     }
 
     try {
         console.log("Enviando registro a AWS...");
+        
+        // Deshabilitar botón durante la petición
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Registrando...";
         
         const response = await fetch(`${API_BASE_URL}/auth/register`, {
             method: 'POST',
@@ -72,17 +84,30 @@ document.getElementById('register-form')?.addEventListener('submit', async (e) =
         } else {
             // Sincronizado con 'msg' de tu Lambda profesional
             mostrarMensaje("❌ Error: " + (data.msg || "No se pudo registrar."), "error");
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
 
     } catch (error) {
         console.error("Error de conexión:", error);
         mostrarMensaje("❌ Error: No hay conexión con el servidor.", "error");
+        const btn = document.querySelector('#register-form button');
+        btn.disabled = false;
+        btn.textContent = "Registrarse";
     }
 });
 
 // --- HELPER PARA MENSAJES ---
 function mostrarMensaje(texto, tipo) {
+    if (!messageDiv) return;
     messageDiv.textContent = texto;
-    messageDiv.className = `message ${tipo}`;
+    messageDiv.className = "message " + tipo;
     messageDiv.style.display = "block";
+    
+    // Opcional: Ocultar el mensaje después de unos segundos
+    if(tipo === 'error') {
+        setTimeout(() => {
+            messageDiv.style.display = "none";
+        }, 6000);
+    }
 }
