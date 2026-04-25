@@ -15,7 +15,7 @@ const fallbackImageUnit = "data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http
 if (!token) window.location.href = 'index.html';
 
 // ==============================================================================
-// VALIDACIÓN DE FECHA DE TARJETA (Año Vigente)
+// VALIDACIONES BANCARIAS Y FIX DE IMÁGENES
 // ==============================================================================
 function validarFechaTarjeta(expValue) {
     if (!expValue || !expValue.includes('/')) return false;
@@ -30,8 +30,31 @@ function validarFechaTarjeta(expValue) {
     return true;
 }
 
-['fee-pay-card', 'fee-pay-cvv', 'res-pay-card', 'res-pay-cvv'].forEach(id => {
+function validarCVV(cvv) {
+    return /^\d{3}$/.test(cvv);
+}
+
+function handleImageError(img) {
+    if (!img.dataset.tried) {
+        img.dataset.tried = "true";
+        const oldUrl = img.src;
+        try {
+            const fileKey = oldUrl.split('/').pop();
+            const bucketName = ENV.AWS_API_URL.split('.')[0].replace('https://', '');
+            img.src = `https://${bucketName}.s3.us-east-2.amazonaws.com/uploads/${fileKey}`;
+        } catch(e) { img.src = fallbackImageCondo; }
+    } else {
+        img.src = fallbackImageCondo;
+    }
+}
+
+['fee-pay-card', 'res-pay-card'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, ''); });
+});
+['fee-pay-cvv', 'res-pay-cvv'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', (e) => { 
+        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 3); 
+    });
 });
 ['fee-pay-exp', 'res-pay-exp'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', (e) => { 
@@ -86,10 +109,13 @@ function openFeePayModal(id) {
 document.getElementById('fee-pay-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const expDate = document.getElementById('fee-pay-exp')?.value;
+    const cvv = document.getElementById('fee-pay-cvv')?.value;
+
     if (expDate && !validarFechaTarjeta(expDate)) {
         alert("❌ La tarjeta está vencida o la fecha es inválida.");
         return;
     }
+    if (!validarCVV(cvv)) return alert("❌ El CVV debe tener exactamente 3 dígitos.");
 
     const btn = document.getElementById('btn-confirm-fee') || e.target.querySelector('button[type="submit"]');
     if(btn) { btn.disabled = true; btn.textContent = "Procesando..."; }
@@ -249,7 +275,7 @@ async function loadAdminCondos() {
 
     const renderCondo = (c) => `
         <div class="card ${c.activo === false ? 'inactivo' : ''}" style="display: flex; flex-direction: column; padding: 0; overflow: hidden; background: white; opacity: ${c.activo===false?'0.6':'1'}">
-            <img src="${c.foto_url || ''}" onerror="this.src='${fallbackImageCondo}'" style="width: 100%; height: 160px; object-fit: cover;">
+            <img src="${c.foto_url || ''}" onerror="handleImageError(this)" style="width: 100%; height: 160px; object-fit: cover;">
             <div style="padding: 15px;">
                 <div style="display:flex; justify-content:space-between; align-items:start;">
                     <h3 style="margin: 0;">${c.nombre}</h3>
@@ -295,7 +321,7 @@ async function viewUnits(condoId, condoName) {
             return `
             <div class="unit-card ${isDeleted ? 'inactiva' : (isOcupado ? 'ocupado' : (isEspera ? 'espera' : 'disponible'))}">
                 <div style="display: flex; gap: 15px; align-items: center; flex: 1;">
-                    <img src="${u.foto_url || ''}" onerror="this.src='${fallbackImageUnit}'" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;">
+                    <img src="${u.foto_url || ''}" onerror="handleImageError(this)" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;">
                     <div style="flex: 1;">
                         <h5 style="margin:0;">${u.nombre} <span class="badge-status" style="background:#e0f2fe; color:#0369a1;">Para ${u.modalidad || 'Renta'}</span></h5>
                         <p style="margin:2px 0; font-weight:bold; color:#2563eb;">$${u.precio}</p>
@@ -382,7 +408,6 @@ document.getElementById('add-amenity-form')?.addEventListener('submit', async (e
     btn.disabled = false;
 });
 
-// NUEVA FUNCIÓN GLOBAL PARA CANCELAR
 async function cancelAmenityReservation(id) {
     if(!confirm("¿Estás seguro de cancelar esta reserva de amenidad?")) return;
     const res = await fetch(`${API_BASE_URL}/amenities/reservations`, {
@@ -447,10 +472,20 @@ async function loadAmenitiesForResident() {
 
 document.getElementById('reserve-amenity-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const payload = { amenity_id: document.getElementById('res-amenity-select').value, fecha_inicio: document.getElementById('am-start').value, fecha_fin: document.getElementById('am-end').value };
+    
+    const startVal = document.getElementById('am-start').value;
+    const endVal = document.getElementById('am-end').value;
+    if(!startVal || !endVal) return alert("❌ Selecciona las fechas.");
+
+    const payload = { 
+        amenity_id: document.getElementById('res-amenity-select').value, 
+        fecha_inicio: new Date(startVal).toISOString(), 
+        fecha_fin: new Date(endVal).toISOString() 
+    };
+
     const res = await fetch(`${API_BASE_URL}/amenities/reserve`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
-    if(res.ok) { alert("✅ Reserva Gratuita Confirmada"); e.target.reset(); loadAmenitiesForResident(); }
-    else { const err = await res.json(); alert(err.msg); }
+    if(res.ok) { alert("✅ Reserva Confirmada"); e.target.reset(); loadAmenitiesForResident(); }
+    else { const err = await res.json(); alert("❌ " + err.msg); }
 });
 
 // ==============================================================================
@@ -468,7 +503,7 @@ async function loadResidenteDashboard() {
         const condos = await res.json();
         grid.innerHTML = condos.map(c => `
             <div class="card" onclick="exploreUnits('${c.id}', '${c.nombre}')" style="cursor:pointer; padding:0; overflow:hidden; background: white;">
-                <img src="${c.foto_url || ''}" onerror="this.src='${fallbackImageCondo}'" style="width:100%; height:160px; object-fit:cover;">
+                <img src="${c.foto_url || ''}" onerror="handleImageError(this)" style="width:100%; height:160px; object-fit:cover;">
                 <div style="padding:15px;"><h4>${c.nombre}</h4><p style="color:#64748b; font-size:0.85rem; margin-top:5px;">📍 ${c.direccion}</p></div>
             </div>`).join('') || '<p style="width:100%; text-align:center;">No hay edificios.</p>';
     } catch (e) {}
@@ -490,7 +525,7 @@ async function exploreUnits(condoId, condoName) {
 
         const renderUnit = (u) => `
             <div class="card" style="padding:15px; background: white; text-align: center;">
-                <img src="${u.foto_url || ''}" onerror="this.src='${fallbackImageCondo}'" style="width:100%; height:130px; object-fit:cover; border-radius:8px; margin-bottom:10px;">
+                <img src="${u.foto_url || ''}" onerror="handleImageError(this)" style="width:100%; height:130px; object-fit:cover; border-radius:8px; margin-bottom:10px;">
                 <h5 style="margin:0;">${u.nombre}</h5>
                 <p style="font-weight:bold; color:#2563eb; font-size:1.3rem; margin:10px 0;">$${u.precio}</p>
                 <button onclick="openReserveModal('${u.id}', '${u.nombre}', ${u.precio}, '${u.modalidad || 'Renta'}')" class="btn-primary" style="width:100%;">${u.modalidad === 'Venta' ? 'Comprar Propiedad' : 'Rentar Mensual'}</button>
@@ -515,7 +550,7 @@ async function loadMyReservations() {
             const isVenta = r.unit_details?.modalidad === 'Venta';
             return `
             <div class="card" style="display: flex; gap: 20px; padding: 20px; align-items: center; border-left: 6px solid ${isEspera ? '#f97316' : '#2563eb'}; margin-bottom:15px; background: white;">
-                <img src="${r.unit_details?.foto_url || ''}" onerror="this.src='${fallbackImageCondo}'" style="width: 120px; height: 90px; object-fit: cover; border-radius: 8px;">
+                <img src="${r.unit_details?.foto_url || ''}" onerror="handleImageError(this)" style="width: 120px; height: 90px; object-fit: cover; border-radius: 8px;">
                 <div style="flex: 1;">
                     <h4 style="margin:0; font-size: 1.2rem;">${r.unit_details?.nombre} <span class="badge-status" style="background:#e0f2fe; color:#0369a1; font-size:0.7rem;">${isVenta ? 'Propiedad' : 'Rentado'}</span></h4>
                     <p style="margin: 0; color: #2563eb; font-weight: bold;">🏢 ${r.unit_details?.condo_name}</p>
@@ -582,6 +617,9 @@ document.getElementById('reserve-form')?.addEventListener('submit', async (e) =>
         alert("❌ La tarjeta está vencida o la fecha es inválida. Debe ser un año vigente.");
         return;
     }
+
+    const cvv = document.getElementById('res-pay-cvv').value;
+    if (!validarCVV(cvv)) return alert("❌ El CVV debe tener exactamente 3 dígitos.");
 
     if(document.getElementById('res-pay-card').value.length < 16) return alert("❌ Tarjeta incompleta.");
     
@@ -739,7 +777,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (userData.role === 'admin') { 
             document.getElementById('admin-section').style.display = 'block'; 
             
-            // LÓGICA DE SUPER USUARIO PARA MOSTRAR LA PESTAÑA "AJUSTES"
             if (userData.email.toLowerCase() === SUPER_USER_EMAIL.toLowerCase()) {
                 const btnAjustes = document.getElementById('tab-admin-ajustes');
                 if(btnAjustes) btnAjustes.style.display = 'inline-block';
@@ -758,3 +795,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+
+// ==============================================================================
+// AUTO-LIMPIADOR VISUAL (POLLING)
+// ==============================================================================
+setInterval(() => {
+    const viewAdminAm = document.getElementById('view-admin-amenidades');
+    const viewResAm = document.getElementById('view-amenidades-res');
+    if (viewAdminAm && viewAdminAm.style.display === 'block') loadAmenitiesAdmin();
+    if (viewResAm && viewResAm.style.display === 'block') loadAmenitiesForResident();
+}, 60000);

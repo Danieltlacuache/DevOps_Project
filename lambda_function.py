@@ -18,7 +18,6 @@ def get_system_secrets():
         res = client.get_secret_value(SecretId=os.environ.get('SECRET_ID', 'CondoManager/JWT_Secret'))
         return json.loads(res['SecretString'])
     except Exception as e:
-        print("Error abriendo bóveda:", e)
         return {}
 
 SECRETS = get_system_secrets()
@@ -36,7 +35,6 @@ try:
     else:
         redis_client = None
 except Exception as e:
-    print("Fallo en la conexión a Redis:", e)
     redis_client = None
 
 # ==============================================================================
@@ -91,7 +89,8 @@ def notify_clients(payload):
     except: pass
 
 def clean_expired_reservations():
-    now_utc = datetime.datetime.utcnow().isoformat()
+    now_utc = datetime.datetime.utcnow().isoformat() + "Z"
+    
     occupied = UNITS_TABLE.scan(FilterExpression=Attr('estado').eq('Ocupado')).get('Items', [])
     for u in occupied:
         if u.get('modalidad') == 'Venta': continue 
@@ -100,7 +99,6 @@ def clean_expired_reservations():
             UNITS_TABLE.update_item(Key={'id': u['id']}, UpdateExpression="SET estado = :s, ocupado_por = :empty, fecha_inicio = :empty, fecha_fin = :empty", ExpressionAttributeValues={':s': 'Disponible', ':empty': ''})
             notify_clients({'action': 'REFRESH_UNITS', 'condo_id': u.get('condo_id')})
             
-    # NUEVO: Limpiar reservas de amenidades (AUTO-DISPONIBILIDAD)
     expired_ams = AMENITY_RES_TABLE.scan().get('Items', [])
     for r in expired_ams:
         if safe_str(r.get('fecha_fin')) <= now_utc:
@@ -127,7 +125,7 @@ def list_units(event, user):
     return response(200, items)
 
 # ==============================================================================
-# MANEJADOR PRINCIPAL (TODAS LAS RUTAS)
+# MANEJADOR PRINCIPAL
 # ==============================================================================
 def lambda_handler(event, context):
     rk = event.get('requestContext', {}).get('routeKey')
@@ -160,10 +158,19 @@ def lambda_handler(event, context):
     user = verify_jwt(event)
     if not user: return response(401, {'msg': 'Token inválido'})
 
+    # --- USUARIOS Y TOKENS ---
     if p == '/users' and m == 'GET':
         if user['role'] != 'admin': return response(403, {'msg': 'No autorizado'})
         return response(200, USERS_TABLE.scan(ProjectionExpression="email, #r", ExpressionAttributeNames={'#r': 'role'}).get('Items', []))
 
+    if p == '/admin/token' and m == 'POST':
+        if user.get('role') != 'admin': return response(403, {'msg': 'No autorizado'})
+        t_type = json.loads(event.get('body', '{}')).get('type', 'admin')
+        nuevo_token = ("MAINT-" if t_type == 'mantenimiento' else "ADMIN-") + str(uuid.uuid4())[:8].upper()
+        TOKENS_TABLE.put_item(Item={'token': nuevo_token, 'used': False, 'type': t_type})
+        return response(201, {'token': nuevo_token})
+
+    # --- CUOTAS ---
     if p == '/fees':
         if m == 'GET':
             if user['role'] == 'residente': return response(200, sorted(FEES_TABLE.scan(FilterExpression=Attr('email').eq(user['email'])).get('Items', []), key=lambda x: safe_str(x.get('fecha_creacion')), reverse=True))
@@ -180,67 +187,7 @@ def lambda_handler(event, context):
             notify_clients({'action': 'REFRESH_FEES'})
             return response(200, {'msg': 'Cuota pagada'})
 
-    if p == '/incidents':
-        if m == 'POST' and user['role'] == 'residente':
-            data = json.loads(event['body'])
-            inc_id = str(uuid.uuid4())
-            INCIDENTS_TABLE.put_item(Item={'id': inc_id, 'residente': user['email'], 'unit_id': data['unit_id'], 'descripcion': data['descripcion'], 'estado': 'Pendiente', 'fecha': datetime.datetime.utcnow().isoformat()})
-            
-            techs = [u['email'] for u in USERS_TABLE.scan(ProjectionExpression="email, #r", ExpressionAttributeNames={'#r': 'role'}).get('Items', []) if u.get('role') == 'mantenimiento']
-            assigned_tech = 'Sin asignar'
-            if techs:
-                tech_loads = {tech: 0 for tech in techs}
-                active_tasks = MAINT_TABLE.scan().get('Items', [])
-                for t in active_tasks:
-                    if t.get('status') in ['Pendiente', 'En Progreso'] and t.get('assigned_to') in tech_loads:
-                        tech_loads[t['assigned_to']] += 1
-                assigned_tech = min(tech_loads, key=tech_loads.get)
-                
-            task = {'id': str(uuid.uuid4()), 'unit_id': data['unit_id'], 'incident_id': inc_id, 'assigned_to': assigned_tech, 'descripcion': data['descripcion'], 'status': 'Pendiente', 'fecha': datetime.datetime.utcnow().isoformat()}
-            MAINT_TABLE.put_item(Item=task)
-
-            notify_clients({'action': 'REFRESH_INCIDENTS'})
-            notify_clients({'action': 'REFRESH_TASKS'})
-            return response(201, {'msg': 'Reportado'})
-            
-        if m == 'GET':
-            all_incidents = sorted(INCIDENTS_TABLE.scan().get('Items', []), key=lambda x: safe_str(x.get('fecha')), reverse=True)
-            
-            condos_map = {c['id']: c.get('nombre', 'Edificio Borrado') for c in CONDOS_TABLE.scan().get('Items', [])}
-            units_map = {u['id']: u for u in UNITS_TABLE.scan().get('Items', [])}
-            
-            my_incidents = []
-            if user['role'] == 'admin':
-                my_condos = [c['id'] for c in CONDOS_TABLE.scan(FilterExpression=Attr('admin_owner').eq(user['email'])).get('Items', [])]
-                my_units = [u['id'] for u in UNITS_TABLE.scan().get('Items', []) if u.get('condo_id') in my_condos]
-                my_incidents = [i for i in all_incidents if i.get('unit_id') in my_units]
-            elif user['role'] == 'residente':
-                my_incidents = [i for i in all_incidents if i.get('residente') == user['email']]
-                
-            for inc in my_incidents:
-                u_info = units_map.get(inc.get('unit_id'), {})
-                inc['unit_name'] = u_info.get('nombre', 'Unidad Desconocida')
-                inc['condo_name'] = condos_map.get(u_info.get('condo_id'), 'Desconocido')
-                
-            return response(200, my_incidents)
-            
-        if m == 'DELETE':
-            data = json.loads(event['body'])
-            inc = INCIDENTS_TABLE.get_item(Key={'id': data['id']}).get('Item')
-            if not inc: return response(404, {'msg': 'No existe'})
-            if user['role'] == 'admin' or (user['role'] == 'residente' and inc['residente'] == user['email'] and inc['estado'] in ['Resuelto', 'Completado']):
-                INCIDENTS_TABLE.delete_item(Key={'id': data['id']})
-                notify_clients({'action': 'REFRESH_INCIDENTS'})
-                return response(200, {'msg': 'Incidente borrado'})
-            return response(403, {'msg': 'No tienes permiso.'})
-
-    if p == '/admin/token' and m == 'POST':
-        if user.get('role') != 'admin': return response(403, {'msg': 'No autorizado'})
-        t_type = json.loads(event.get('body', '{}')).get('type', 'admin')
-        nuevo_token = ("MAINT-" if t_type == 'mantenimiento' else "ADMIN-") + str(uuid.uuid4())[:8].upper()
-        TOKENS_TABLE.put_item(Item={'token': nuevo_token, 'used': False, 'type': t_type})
-        return response(201, {'token': nuevo_token})
-
+    # --- ANUNCIOS ---
     if p == '/announcements':
         if m == 'GET': 
             items = sorted(ANN_TABLE.scan().get('Items', []), key=lambda x: safe_str(x.get('fecha')), reverse=True)
@@ -253,12 +200,17 @@ def lambda_handler(event, context):
             notify_clients({'action': 'REFRESH_ANNOUNCEMENTS'})
             return response(201, item)
         if m == 'DELETE' and user['role'] == 'admin':
-            ANN_TABLE.delete_item(Key={'id': json.loads(event['body'])['id']})
+            data = json.loads(event['body'])
+            ANN_TABLE.delete_item(Key={'id': data['id']})
             notify_clients({'action': 'REFRESH_ANNOUNCEMENTS'})
             return response(200, {'msg': 'Borrado'})
 
+    # --- MANTENIMIENTO ---
     if p == '/maintenance/tasks':
-        if m == 'GET': return response(200, sorted(MAINT_TABLE.scan(FilterExpression=Attr('assigned_to').eq(user['email'])).get('Items', []), key=lambda x: safe_str(x.get('fecha')), reverse=True) if user['role'] == 'mantenimiento' else sorted(MAINT_TABLE.scan().get('Items', []), key=lambda x: safe_str(x.get('fecha')), reverse=True))
+        if m == 'GET': 
+            if user['role'] == 'mantenimiento':
+                return response(200, sorted(MAINT_TABLE.scan(FilterExpression=Attr('assigned_to').eq(user['email'])).get('Items', []), key=lambda x: safe_str(x.get('fecha')), reverse=True))
+            return response(200, sorted(MAINT_TABLE.scan().get('Items', []), key=lambda x: safe_str(x.get('fecha')), reverse=True))
         
         if m == 'PATCH':
             data = json.loads(event['body'])
@@ -291,6 +243,149 @@ def lambda_handler(event, context):
                 return response(403, {'msg': 'No autorizado para borrar'})
             return response(403, {'msg': 'No autorizado'})
 
+    # --- INCIDENTES ---
+    if p == '/incidents':
+        if m == 'POST' and user['role'] == 'residente':
+            data = json.loads(event['body'])
+            inc_id = str(uuid.uuid4())
+            INCIDENTS_TABLE.put_item(Item={'id': inc_id, 'residente': user['email'], 'unit_id': data['unit_id'], 'descripcion': data['descripcion'], 'estado': 'Pendiente', 'fecha': datetime.datetime.utcnow().isoformat()})
+            
+            techs = [u['email'] for u in USERS_TABLE.scan(ProjectionExpression="email, #r", ExpressionAttributeNames={'#r': 'role'}).get('Items', []) if u.get('role') == 'mantenimiento']
+            assigned_tech = 'Sin asignar'
+            if techs:
+                tech_loads = {tech: 0 for tech in techs}
+                active_tasks = MAINT_TABLE.scan().get('Items', [])
+                for t in active_tasks:
+                    if t.get('status') in ['Pendiente', 'En Progreso'] and t.get('assigned_to') in tech_loads:
+                        tech_loads[t['assigned_to']] += 1
+                assigned_tech = min(tech_loads, key=tech_loads.get)
+                
+            task = {'id': str(uuid.uuid4()), 'unit_id': data['unit_id'], 'incident_id': inc_id, 'assigned_to': assigned_tech, 'descripcion': data['descripcion'], 'status': 'Pendiente', 'fecha': datetime.datetime.utcnow().isoformat()}
+            MAINT_TABLE.put_item(Item=task)
+
+            notify_clients({'action': 'REFRESH_INCIDENTS'})
+            notify_clients({'action': 'REFRESH_TASKS'})
+            return response(201, {'msg': 'Reportado'})
+            
+        if m == 'GET':
+            all_incidents = sorted(INCIDENTS_TABLE.scan().get('Items', []), key=lambda x: safe_str(x.get('fecha')), reverse=True)
+            condos_map = {c['id']: c.get('nombre', 'Edificio Borrado') for c in CONDOS_TABLE.scan().get('Items', [])}
+            units_map = {u['id']: u for u in UNITS_TABLE.scan().get('Items', [])}
+            
+            my_incidents = []
+            if user['role'] == 'admin':
+                my_condos = [c['id'] for c in CONDOS_TABLE.scan(FilterExpression=Attr('admin_owner').eq(user['email'])).get('Items', [])]
+                my_units = [u['id'] for u in UNITS_TABLE.scan().get('Items', []) if u.get('condo_id') in my_condos]
+                my_incidents = [i for i in all_incidents if i.get('unit_id') in my_units]
+            elif user['role'] == 'residente':
+                my_incidents = [i for i in all_incidents if i.get('residente') == user['email']]
+                
+            for inc in my_incidents:
+                u_info = units_map.get(inc.get('unit_id'), {})
+                inc['unit_name'] = u_info.get('nombre', 'Unidad Desconocida')
+                inc['condo_name'] = condos_map.get(u_info.get('condo_id'), 'Desconocido')
+                
+            return response(200, my_incidents)
+            
+        if m == 'DELETE':
+            data = json.loads(event['body'])
+            inc = INCIDENTS_TABLE.get_item(Key={'id': data['id']}).get('Item')
+            if not inc: return response(404, {'msg': 'No existe'})
+            if user['role'] == 'admin' or (user['role'] == 'residente' and inc['residente'] == user['email'] and inc['estado'] in ['Resuelto', 'Completado']):
+                INCIDENTS_TABLE.delete_item(Key={'id': data['id']})
+                notify_clients({'action': 'REFRESH_INCIDENTS'})
+                return response(200, {'msg': 'Incidente borrado'})
+            return response(403, {'msg': 'No tienes permiso.'})
+
+    # --- AMENIDADES Y ALGORITMO ANTI-CHOQUES SEGURO ---
+    if p == '/amenities':
+        if m == 'GET':
+            clean_expired_reservations() 
+            condos_map = {c['id']: c.get('nombre', 'Desconocido') for c in CONDOS_TABLE.scan().get('Items', [])}
+            ams = AMENITIES_TABLE.scan().get('Items', [])
+            
+            now_utc = datetime.datetime.utcnow().isoformat() + "Z"
+            active_res = AMENITY_RES_TABLE.scan(FilterExpression=Attr('fecha_inicio').lte(now_utc) & Attr('fecha_fin').gt(now_utc)).get('Items', [])
+            occupied_ids = [r.get('amenity_id') for r in active_res if r.get('amenity_id')]
+            
+            for a in ams: 
+                a['condo_name'] = condos_map.get(a.get('condo_id'))
+                a['estado'] = '🔴 Ocupado Ahora' if a['id'] in occupied_ids else '🟢 Disponible'
+            
+            if user['role'] == 'residente':
+                my_units = UNITS_TABLE.scan(FilterExpression=Attr('ocupado_por').eq(user['email'])).get('Items', [])
+                my_condo_ids = [u.get('condo_id') for u in my_units]
+                ams = [a for a in ams if a.get('condo_id') in my_condo_ids]
+                
+            return response(200, ams)
+            
+        if m == 'POST' and user['role'] == 'admin':
+            data = json.loads(event['body'])
+            AMENITIES_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'condo_id': data['condo_id'], 'nombre': data['nombre']})
+            notify_clients({'action': 'REFRESH_AMENITIES'})
+            return response(201, {'msg': 'Creada'})
+
+    if p == '/amenities/reservations':
+        if m == 'GET':
+            clean_expired_reservations()
+            res_items = sorted(AMENITY_RES_TABLE.scan().get('Items', []), key=lambda x: safe_str(x.get('fecha_inicio')))
+            ams_map = {a['id']: a for a in AMENITIES_TABLE.scan().get('Items', [])}
+            condos_map = {c['id']: c.get('nombre', 'Desconocido') for c in CONDOS_TABLE.scan().get('Items', [])}
+            
+            for r in res_items:
+                am = ams_map.get(r.get('amenity_id'), {})
+                r['amenity_name'] = am.get('nombre', 'Borrada')
+                r['condo_name'] = condos_map.get(am.get('condo_id'), 'Desconocido')
+                
+            if user['role'] == 'residente':
+                res_items = [r for r in res_items if r.get('email') == user['email']]
+            return response(200, res_items)
+            
+        if m == 'DELETE':
+            data = json.loads(event['body'])
+            res_item = AMENITY_RES_TABLE.get_item(Key={'id': data['id']}).get('Item')
+            if not res_item: return response(404, {'msg': 'Reserva no encontrada.'})
+            if user['role'] == 'admin' or (user['role'] == 'residente' and res_item['email'] == user['email']):
+                AMENITY_RES_TABLE.delete_item(Key={'id': data['id']})
+                notify_clients({'action': 'REFRESH_AMENITIES'})
+                return response(200, {'msg': 'Reserva cancelada.'})
+            return response(403, {'msg': 'No autorizado para cancelar esta reserva.'})
+
+    if p == '/amenities/reserve' and m == 'POST':
+        user_units = UNITS_TABLE.scan(FilterExpression=Attr('ocupado_por').eq(user['email'])).get('Items', [])
+        if not user_units: return response(403, {'msg': 'Debes ser residente.'})
+        if any(u.get('privilegios_suspendidos', False) for u in user_units): return response(403, {'msg': 'Tus privilegios están suspendidos.'})
+        
+        data = json.loads(event['body'])
+        
+        try:
+            start = dt.fromisoformat(data['fecha_inicio'].replace('Z', '+00:00')).replace(tzinfo=None)
+            end = dt.fromisoformat(data['fecha_fin'].replace('Z', '+00:00')).replace(tzinfo=None)
+        except Exception:
+            return response(400, {'msg': 'Formato de fecha inválido.'})
+            
+        if start >= end: return response(400, {'msg': 'La fecha/hora de fin debe ser posterior a la de inicio.'})
+        if (end - start).total_seconds() > 28800: return response(400, {'msg': 'El tiempo máximo por reserva es de 8 horas.'})
+        
+        am_data = AMENITIES_TABLE.get_item(Key={'id': data['amenity_id']}).get('Item', {})
+        if not am_data: return response(404, {'msg': 'Amenidad no existe.'})
+        res_condo_ids = [u.get('condo_id') for u in user_units]
+        if am_data.get('condo_id') not in res_condo_ids: return response(403, {'msg': 'No puedes reservar amenidades de un edificio donde no resides.'})
+            
+        overlapping = AMENITY_RES_TABLE.scan(FilterExpression=Attr('amenity_id').eq(data['amenity_id'])).get('Items', [])
+        for r in overlapping:
+            try:
+                r_start = dt.fromisoformat(r['fecha_inicio'].replace('Z', '+00:00')).replace(tzinfo=None)
+                r_end = dt.fromisoformat(r['fecha_fin'].replace('Z', '+00:00')).replace(tzinfo=None)
+                if start < r_end and end > r_start:
+                    return response(400, {'msg': '❌ Choque de horario: La amenidad ya está reservada por otro residente en ese lapso de tiempo.'})
+            except: pass
+                
+        AMENITY_RES_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'amenity_id': data['amenity_id'], 'email': user['email'], 'fecha_inicio': data['fecha_inicio'], 'fecha_fin': data['fecha_fin']})
+        notify_clients({'action': 'REFRESH_AMENITIES'})
+        return response(200, {'msg': 'Confirmada'})
+
+    # --- CONDOS ---
     if p == '/condos':
         if m == 'GET':
             if user.get('role') == 'residente':
@@ -342,6 +437,7 @@ def lambda_handler(event, context):
             notify_clients({'action': 'REFRESH'})
             return response(200, {'msg': 'Actualizado'})
 
+    # --- UNIDADES Y REGLA RENTA UNICA / COMPRA ILIMITADA ---
     if p == '/units':
         if m == 'GET': return list_units(event, user)
         if m == 'PATCH':
@@ -400,6 +496,15 @@ def lambda_handler(event, context):
         req_start, req_end = data['fecha_inicio'], data['fecha_fin']
         
         unit = UNITS_TABLE.get_item(Key={'id': data['unit_id']}).get('Item', {})
+        
+        # Validar límite de rentas (1 por usuario)
+        if unit.get('modalidad', 'Renta') == 'Renta':
+            my_res = RESIDENTS_TABLE.scan(FilterExpression=Attr('email').eq(user['email'])).get('Items', [])
+            for r in my_res:
+                u_det = UNITS_TABLE.get_item(Key={'id': r['unit_id']}).get('Item', {})
+                if u_det.get('modalidad', 'Renta') == 'Renta':
+                    return response(400, {'msg': 'Ya posees una unidad en renta. Solo se permite una renta activa por usuario.'})
+
         if unit.get('modalidad') == 'Venta': req_end = (datetime.datetime.utcnow() + datetime.timedelta(days=36500)).isoformat()
             
         RESIDENTS_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'email': user['email'], 'unit_id': data['unit_id'], 'total': Decimal(str(data['total'])), 'fecha_inicio': req_start, 'fecha_fin': req_end, 'fecha': datetime.datetime.utcnow().isoformat()})
@@ -422,89 +527,5 @@ def lambda_handler(event, context):
                 r['unit_details'] = unit
                 activas.append(r)
         return response(200, activas)
-
-    # --- AMENIDADES NUEVAS REGLAS (LIMITES, CANCELACION, CHOQUES, ESTADOS) ---
-    if p == '/amenities':
-        if m == 'GET':
-            clean_expired_reservations() # Ejecuta limpieza automática al cargar
-            
-            condos_map = {c['id']: c.get('nombre', 'Desconocido') for c in CONDOS_TABLE.scan().get('Items', [])}
-            ams = AMENITIES_TABLE.scan().get('Items', [])
-            
-            # Obtener reservas vigentes ahorita mismo para marcar estado "Ocupado Ahora"
-            now_utc = datetime.datetime.utcnow().isoformat()
-            active_res = AMENITY_RES_TABLE.scan(FilterExpression=Attr('fecha_inicio').lte(now_utc) & Attr('fecha_fin').gt(now_utc)).get('Items', [])
-            occupied_ids = [r['amenity_id'] for r in active_res]
-            
-            for a in ams: 
-                a['condo_name'] = condos_map.get(a.get('condo_id'))
-                a['estado'] = '🔴 Ocupado Ahora' if a['id'] in occupied_ids else '🟢 Disponible'
-            
-            if user['role'] == 'residente':
-                my_units = UNITS_TABLE.scan(FilterExpression=Attr('ocupado_por').eq(user['email'])).get('Items', [])
-                my_condo_ids = [u.get('condo_id') for u in my_units]
-                ams = [a for a in ams if a.get('condo_id') in my_condo_ids]
-                
-            return response(200, ams)
-            
-        if m == 'POST' and user['role'] == 'admin':
-            data = json.loads(event['body'])
-            AMENITIES_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'condo_id': data['condo_id'], 'nombre': data['nombre']})
-            notify_clients({'action': 'REFRESH_AMENITIES'})
-            return response(201, {'msg': 'Creada'})
-
-    if p == '/amenities/reservations':
-        if m == 'GET':
-            clean_expired_reservations()
-            res_items = sorted(AMENITY_RES_TABLE.scan().get('Items', []), key=lambda x: safe_str(x.get('fecha_inicio')))
-            ams_map = {a['id']: a for a in AMENITIES_TABLE.scan().get('Items', [])}
-            condos_map = {c['id']: c.get('nombre', 'Desconocido') for c in CONDOS_TABLE.scan().get('Items', [])}
-            
-            for r in res_items:
-                am = ams_map.get(r.get('amenity_id'), {})
-                r['amenity_name'] = am.get('nombre', 'Borrada')
-                r['condo_name'] = condos_map.get(am.get('condo_id'), 'Desconocido')
-                
-            if user['role'] == 'residente':
-                res_items = [r for r in res_items if r.get('email') == user['email']]
-            return response(200, res_items)
-            
-        if m == 'DELETE':
-            data = json.loads(event['body'])
-            res_item = AMENITY_RES_TABLE.get_item(Key={'id': data['id']}).get('Item')
-            if not res_item: return response(404, {'msg': 'Reserva no encontrada.'})
-            if user['role'] == 'admin' or (user['role'] == 'residente' and res_item['email'] == user['email']):
-                AMENITY_RES_TABLE.delete_item(Key={'id': data['id']})
-                notify_clients({'action': 'REFRESH_AMENITIES'})
-                return response(200, {'msg': 'Reserva cancelada.'})
-            return response(403, {'msg': 'No autorizado para cancelar esta reserva.'})
-
-    if p == '/amenities/reserve' and m == 'POST':
-        user_units = UNITS_TABLE.scan(FilterExpression=Attr('ocupado_por').eq(user['email'])).get('Items', [])
-        if not user_units: return response(403, {'msg': 'Debes ser residente.'})
-        if any(u.get('privilegios_suspendidos', False) for u in user_units): return response(403, {'msg': 'Tus privilegios están suspendidos.'})
-        
-        data = json.loads(event['body'])
-        start, end = dt.fromisoformat(data['fecha_inicio']), dt.fromisoformat(data['fecha_fin'])
-        
-        if start >= end: return response(400, {'msg': 'La fecha/hora de fin debe ser posterior a la de inicio.'})
-        if (end - start).total_seconds() > 28800: return response(400, {'msg': 'El tiempo máximo por reserva es de 8 horas.'})
-        
-        am_data = AMENITIES_TABLE.get_item(Key={'id': data['amenity_id']}).get('Item', {})
-        if not am_data: return response(404, {'msg': 'Amenidad no existe.'})
-        res_condo_ids = [u.get('condo_id') for u in user_units]
-        if am_data.get('condo_id') not in res_condo_ids: return response(403, {'msg': 'No puedes reservar amenidades de un edificio donde no resides.'})
-            
-        # ALGORITMO ANTI-CHOQUES (OVERLAP CHECK)
-        overlapping = AMENITY_RES_TABLE.scan(FilterExpression=Attr('amenity_id').eq(data['amenity_id'])).get('Items', [])
-        for r in overlapping:
-            r_start, r_end = dt.fromisoformat(r['fecha_inicio']), dt.fromisoformat(r['fecha_fin'])
-            # Si el inicio de la nueva es antes del fin de la guardada, Y el fin de la nueva es despues del inicio de la guardada = CHOQUE
-            if start < r_end and end > r_start:
-                return response(400, {'msg': '❌ Choque de horario: La amenidad ya está reservada por otro residente en ese lapso de tiempo.'})
-                
-        AMENITY_RES_TABLE.put_item(Item={'id': str(uuid.uuid4()), 'amenity_id': data['amenity_id'], 'email': user['email'], 'fecha_inicio': data['fecha_inicio'], 'fecha_fin': data['fecha_fin']})
-        notify_clients({'action': 'REFRESH_AMENITIES'})
-        return response(200, {'msg': 'Confirmada'})
 
     return response(404, {'msg': 'No encontrado'})
