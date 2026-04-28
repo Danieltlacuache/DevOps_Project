@@ -20,19 +20,14 @@ Globals:
         ANNOUNCEMENTS_TABLE: !Ref AnnouncementsTable
         INCIDENTS_TABLE: !Ref IncidentsTable
         FEES_TABLE: !Ref FeesTable
-        # --- AQUI ESTAN LAS VARIABLES NUEVAS DE AMENIDADES ---
         AMENITIES_TABLE: !Ref AmenitiesTable
-        AMENITY_RESERVATIONS_TABLE: !Ref AmenityReservationsTable
-        # -----------------------------------------------------
+        AMENITY_RESERVATIONS_TABLE: !Ref AmenityResTable
         PHOTOS_BUCKET: !Ref CondoPhotosBucket
         SECRET_ID: "CondoManager/JWT_Secret"
         WEBSOCKET_URL: !Sub "https://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
         CDN_DOMAIN: !GetAtt CondoCloudFrontDistribution.DomainName
 
 Resources:
-  # ==============================================================================
-  # 1. API GATEWAY (REST)
-  # ==============================================================================
   CondoRestApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -43,9 +38,6 @@ Resources:
         AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: "'*'"
 
-  # ==============================================================================
-  # 2. FUNCIÓN LAMBDA (SERVERLESS BACKEND)
-  # ==============================================================================
   CondoManagerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -67,60 +59,188 @@ Resources:
             Method: ANY
 
   # ==============================================================================
-  # 3. TABLAS DYNAMODB
+  # TABLAS CON NOMBRES FIJOS (SIN IDENTIFICADORES ALEATORIOS)
   # ==============================================================================
-  UsersTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: email, Type: String } } }
-  ResidentsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  UnitsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  AdminTokensTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: token, Type: String } } }
-  ConnectionsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: connectionId, Type: String } } }
-  MaintenanceTasksTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  AnnouncementsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  IncidentsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  FeesTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  
-  # --- AQUÍ ESTÁN LAS TABLAS NUEVAS DE AMENIDADES ---
-  AmenitiesTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  AmenityReservationsTable: { Type: AWS::Serverless::SimpleTable, Properties: { PrimaryKey: { Name: id, Type: String } } }
-  # --------------------------------------------------
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Users"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "email", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "email", KeyType: "HASH"}]
 
+  AdminTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "AdminTokens"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "token", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "token", KeyType: "HASH"}]
+
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Connections"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "connectionId", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "connectionId", KeyType: "HASH"}]
+
+  AnnouncementsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Announcements"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "id", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+
+  AmenitiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Amenities"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "id", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+
+  # TABLAS DE ALTO RENDIMIENTO CON GSIs
   CondosTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      AttributeDefinitions: [{AttributeName: id, AttributeType: S}, {AttributeName: popularidad, AttributeType: N}]
-      KeySchema: [{AttributeName: id, KeyType: HASH}]
+      TableName: "Condos"
       BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "popularidad"
+          AttributeType: "N"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
       GlobalSecondaryIndexes:
-        - IndexName: PopularityIndex
-          KeySchema: [{AttributeName: popularidad, KeyType: HASH}]
-          Projection: {ProjectionType: ALL}
+        - IndexName: "PopularityIndex"
+          KeySchema: [{AttributeName: "popularidad", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  UnitsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Units"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "condo_id"
+          AttributeType: "S"
+        - AttributeName: "estado"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "CondoIndex"
+          KeySchema: [{AttributeName: "condo_id", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+        - IndexName: "EstadoIndex"
+          KeySchema: [{AttributeName: "estado", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  ResidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Residents"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "EmailIndex"
+          KeySchema: [{AttributeName: "email", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  FeesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Fees"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "EmailIndex"
+          KeySchema: [{AttributeName: "email", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  IncidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Incidents"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "residente"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "ResidenteIndex"
+          KeySchema: [{AttributeName: "residente", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  MaintenanceTasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "MaintenanceTasks"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "assigned_to"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "AssignedToIndex"
+          KeySchema: [{AttributeName: "assigned_to", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  AmenityResTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "AmenityReservations"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "amenity_id"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "AmenityIndex"
+          KeySchema: [{AttributeName: "amenity_id", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+        - IndexName: "EmailIndex"
+          KeySchema: [{AttributeName: "email", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
 
   # ==============================================================================
-  # 4. S3 Y CLOUDFRONT (CDN)
+  # S3, CLOUDFRONT Y WEBSOCKETS (IGUAL QUE ANTES)
   # ==============================================================================
   CondoPhotosBucket:
     Type: AWS::S3::Bucket
     Properties:
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
+      PublicAccessBlockConfiguration: {BlockPublicAcls: false, BlockPublicPolicy: false, IgnorePublicAcls: false, RestrictPublicBuckets: false}
       CorsConfiguration:
-        CorsRules: [{ AllowedHeaders: ['*'], AllowedMethods: [GET, PUT, POST, DELETE], AllowedOrigins: ['*'] }]
+        CorsRules: [{AllowedHeaders: ['*'], AllowedMethods: [GET, PUT, POST, DELETE], AllowedOrigins: ['*']}]
 
-  # Política que hace público el bucket automáticamente al desplegar
   CondoPhotosBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref CondoPhotosBucket
       PolicyDocument:
         Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal: "*"
-            Action: "s3:GetObject"
-            Resource: !Sub "arn:aws:s3:::${CondoPhotosBucket}/*"
+        Statement: [{Effect: Allow, Principal: "*", Action: "s3:GetObject", Resource: !Sub "arn:aws:s3:::${CondoPhotosBucket}/*"}]
 
   CondoCloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -128,51 +248,45 @@ Resources:
       DistributionConfig:
         Enabled: true
         Origins:
-          - DomainName: !GetAtt CondoPhotosBucket.DomainName
+          - DomainName: !GetAtt CondoPhotosBucket.RegionalDomainName
             Id: S3Origin
-            S3OriginConfig: { OriginAccessIdentity: "" }
+            S3OriginConfig: {OriginAccessIdentity: ""}
         DefaultCacheBehavior:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
           AllowedMethods: [GET, HEAD, OPTIONS]
-          ForwardedValues: { QueryString: false, Cookies: { Forward: none } }
+          ForwardedValues: {QueryString: false, Cookies: {Forward: none}}
 
-  # ==============================================================================
-  # 5. WEBSOCKETS (TIEMPO REAL)
-  # ==============================================================================
   CondoWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
-    Properties: { Name: CondoWebSocketApi, ProtocolType: WEBSOCKET, RouteSelectionExpression: "$request.body.action" }
+    Properties: {Name: CondoWebSocketApi, ProtocolType: WEBSOCKET, RouteSelectionExpression: "$request.body.action"}
 
   ConnectRoute:
     Type: AWS::ApiGatewayV2::Route
-    Properties: { ApiId: !Ref CondoWebSocketApi, RouteKey: $connect, Target: !Join [ '/', [ 'integrations', !Ref WebSocketIntegration ] ] }
+    Properties: {ApiId: !Ref CondoWebSocketApi, RouteKey: $connect, Target: !Join ['/', ['integrations', !Ref WebSocketIntegration]]}
 
   DisconnectRoute:
     Type: AWS::ApiGatewayV2::Route
-    Properties: { ApiId: !Ref CondoWebSocketApi, RouteKey: $disconnect, Target: !Join [ '/', [ 'integrations', !Ref WebSocketIntegration ] ] }
+    Properties: {ApiId: !Ref CondoWebSocketApi, RouteKey: $disconnect, Target: !Join ['/', ['integrations', !Ref WebSocketIntegration]]}
 
   WebSocketIntegration:
     Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref CondoWebSocketApi
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CondoManagerFunction.Arn}/invocations"
+    Properties: {ApiId: !Ref CondoWebSocketApi, IntegrationType: AWS_PROXY, IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CondoManagerFunction.Arn}/invocations"}
 
   WebSocketDeployment:
     Type: AWS::ApiGatewayV2::Deployment
     DependsOn: [ConnectRoute, DisconnectRoute]
-    Properties: { ApiId: !Ref CondoWebSocketApi }
+    Properties: {ApiId: !Ref CondoWebSocketApi}
 
   WebSocketStage:
     Type: AWS::ApiGatewayV2::Stage
-    Properties: { StageName: Prod, DeploymentId: !Ref WebSocketDeployment, ApiId: !Ref CondoWebSocketApi }
+    Properties: {StageName: Prod, DeploymentId: !Ref WebSocketDeployment, ApiId: !Ref CondoWebSocketApi}
 
   CondoFunctionWSAllow:
     Type: AWS::Lambda::Permission
-    Properties: { Action: lambda:InvokeFunction, FunctionName: !Ref CondoManagerFunction, Principal: apigateway.amazonaws.com }
+    Properties: {Action: lambda:InvokeFunction, FunctionName: !Ref CondoManagerFunction, Principal: apigateway.amazonaws.com}
 
 Outputs:
-  ApiUrl: { Value: !Sub "https://${CondoRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/" }
-  WebSocketUrl: { Value: !Sub "wss://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod" }
-  CDNUrl: { Value: !GetAtt CondoCloudFrontDistribution.DomainName }
+  ApiUrl: {Value: !Sub "https://${CondoRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"}
+  WebSocketUrl: {Value: !Sub "wss://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"}
+  CDNUrl: {Value: !GetAtt CondoCloudFrontDistribution.DomainName}

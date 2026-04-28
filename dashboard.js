@@ -89,7 +89,12 @@ async function loadFees() {
                     <p style="margin:5px 0; color:#0f172a; font-weight:bold; font-size:1.1rem;">Monto: $${f.monto}</p>
                     <span class="badge-status ${isPaid ? 'status-disponible' : 'status-ocupado'}">${f.estado}</span>
                 </div>
-                ${isPaid ? `<small style="color:#64748b;">Pagado el: ${new Date(f.fecha_pago).toLocaleDateString()}</small>` : `<button class="btn-primary" style="background:#059669;" onclick="openFeePayModal('${f.id}')">Pagar Ahora</button>`}
+                ${isPaid ? `
+                <div style="text-align: right;">
+                    <small style="color:#64748b; display: block; margin-bottom: 5px;">Pagado el: ${new Date(f.fecha_pago).toLocaleDateString()}</small>
+                    <button class="btn-action" style="color: #ef4444;" onclick="deleteFeeHistory('${f.id}')" title="Borrar del historial">🗑️</button>
+                </div>
+                ` : `<button class="btn-primary" style="background:#059669;" onclick="openFeePayModal('${f.id}')">Pagar Ahora</button>`}
             </div>`;
             
             if(isPaid) htmlPagadas += html;
@@ -99,6 +104,20 @@ async function loadFees() {
         contPendientes.innerHTML = htmlPendientes || '<p style="color:#64748b; font-style:italic;">No tienes pagos pendientes. ¡Todo al corriente!</p>';
         contPagadas.innerHTML = htmlPagadas || '<p style="color:#64748b;">No hay historial de pagos.</p>';
     } catch (e) { console.error("Error cargando cuotas:", e); }
+}
+
+async function deleteFeeHistory(id) {
+    if (!confirm("¿Ocultar este pago de tu historial de residente?")) return;
+    const res = await fetch(`${API_BASE_URL}/fees`, { 
+        method: 'DELETE', 
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ id }) 
+    });
+    if (res.ok) {
+        loadFees();
+    } else {
+        alert("❌ Error al borrar el historial.");
+    }
 }
 
 function openFeePayModal(id) {
@@ -235,7 +254,7 @@ async function loadMaintenanceTasks() {
         <div class="card" style="display: flex; gap: 20px; padding: 20px; align-items: center; border-left: 6px solid ${isDone ? '#22c55e' : '#f59e0b'}; margin-bottom:15px; background: white;">
             <div style="flex: 1;">
                 <h4 style="margin:0;">${t.descripcion}</h4>
-                <p style="margin:5px 0; color:#64748b; font-size:0.85rem;">📍 Unidad ID: ${t.unit_id}</p>
+                <p style="margin:5px 0; color:#64748b; font-size:0.85rem;">📍 ${t.condo_name} - ${t.unit_name}</p>
                 ${userData.role === 'admin' ? `<p style="margin:0; font-size:0.8rem; color:#2563eb;">👷 Técnico: ${t.assigned_to}</p>` : ''}
             </div>
             <select onchange="updateTaskStatus('${t.id}', this.value)" style="padding:8px; border-radius:8px; border:1px solid #cbd5e1;">
