@@ -1,0 +1,164 @@
+graph TB
+    classDef azureService fill:#0078d4,color:#fff,stroke:#005a9e,stroke-width:1px
+    classDef cfService fill:#f6821f,color:#fff,stroke:#d4700e,stroke-width:1px
+    classDef lambda fill:#0078d4,color:#fff,stroke:#005a9e,stroke-width:1px
+    classDef db fill:#3b48cc,color:#fff,stroke:#2a35a0,stroke-width:1px
+    classDef cache fill:#c925d1,color:#fff,stroke:#9e1ea8,stroke-width:1px
+    classDef cicd fill:#24292e,color:#fff,stroke:#6f42c1,stroke-width:2px
+    classDef gate fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:2px
+    classDef obs fill:#00bcd4,color:#fff,stroke:#0097a7,stroke-width:1px
+    classDef git fill:#6f42c1,color:#fff,stroke:#5a32a3,stroke-width:1px
+    classDef user fill:#2ecc71,color:#fff,stroke:#27ae60,stroke-width:1px
+    classDef docker fill:#2496ed,color:#fff,stroke:#1a6fb5,stroke-width:1px
+    classDef internal fill:#34495e,color:#fff,stroke:#2c3e50,stroke-width:2px
+
+    EndUser["End User<br/>Browser / Mobile"]:::user
+
+    subgraph CloudflareEdge["Cloudflare Edge Network"]
+        CFDNS["Cloudflare DNS<br/>Global Anycast"]:::cfService
+        CFWAF["Cloudflare WAF<br/>DDoS Protection & Rules"]:::cfService
+        CFPages["Cloudflare Pages<br/>Next.js Static & SSR"]:::cfService
+        CFWorkers["Cloudflare Workers<br/>Serverless API Gateway<br/>Request Routing & Auth"]:::cfService
+    end
+
+    EndUser -->|"HTTPS"| CFDNS
+    CFDNS --> CFWAF
+    CFWAF -->|"Static/SSR"| CFPages
+    CFWAF -->|"API /api/*"| CFWorkers
+
+    subgraph InternalCode["Internal Code Components — Next.js / TypeScript"]
+        subgraph ReservationMgr["Reservation Manager"]
+            RM_Create["createBooking()"]
+            RM_Modify["modifyBooking()"]
+            RM_Cancel["cancelBooking()"]
+            RM_Get["getBookingDetails()"]
+        end
+        subgraph InventoryCtrl["Inventory Controller"]
+            IC_Avail["checkAvailability()"]
+            IC_Sync["syncRedisCache()"]
+            IC_Update["updateRoomStock()"]
+            IC_Bulk["bulkInventoryUpdate()"]
+        end
+        subgraph ExtIntegration["External Integration Service"]
+            EI_Airbnb["AirbnbAdapter"]
+            EI_Booking["BookingComAdapter"]
+            EI_Sync["syncExternalPlatforms()"]
+        end
+        subgraph UIComponents["UI Components — React"]
+            UI_Search["SearchForm"]
+            UI_BookingFunnel["BookingFunnel"]
+            UI_Confirmation["ConfirmationView"]
+            UI_Dashboard["HotelDashboard"]
+        end
+    end
+
+    subgraph GitFlow["Git Branching Strategy"]
+        Feature["feature/* branch<br/>Developer work"]:::git
+        PR["Pull Request<br/>Code Review"]:::git
+        Develop["develop branch<br/>Integration"]:::git
+        Main["main branch<br/>Production-ready"]:::git
+    end
+
+    Feature -->|"Open PR"| PR
+    PR -->|"Approved + CI Pass"| Develop
+    Develop -->|"Release PR"| Main
+
+    subgraph CICD["CI/CD Pipeline — GitHub Actions"]
+        Build["Build<br/>npm install & tsc compile"]:::cicd
+        UnitTest["Unit Testing / UAT<br/>Vitest / Jest"]:::cicd
+        Coverage["Code Coverage<br/>Min 80% Required"]:::cicd
+        DockerBuild["Docker Build<br/>docker build -t hotel-app"]:::docker
+        DockerPush["Docker Push<br/>Docker Hub Registry"]:::docker
+    end
+
+    Develop -->|"Trigger CI"| Build
+    Build --> UnitTest
+    UnitTest --> Coverage
+    Coverage -->|"Pass"| DockerBuild
+    DockerBuild --> DockerPush
+
+    DockerPush -->|"Auto Deploy"| DevEnv
+    DockerPush -.->|"Approval Required"| QAGate
+    QAGate["Pre-Approver Gate<br/>QA Team Review"]:::gate
+    QAGate -->|"Approved"| QAEnv
+    QAEnv -.->|"Approval Required"| ProdGate
+    ProdGate["Pre-Approver Gate<br/>Release Manager Sign-off"]:::gate
+    ProdGate -->|"Approved"| ProdEnv
+
+    subgraph DevEnv["Development Environment — Azure via Terraform"]
+        DevAPIM["Azure API Management<br/>dev-api.hotel.com"]:::azureService
+        DevF1["Azure Function<br/>Reservation Manager"]:::lambda
+        DevF2["Azure Function<br/>Inventory Controller"]:::lambda
+        DevF3["Azure Function<br/>External Integration"]:::lambda
+        DevPG["Azure PostgreSQL<br/>Flexible Server — Burstable B1ms"]:::db
+        DevRedis["Azure Cache for Redis<br/>Basic C0"]:::cache
+    end
+
+    DevAPIM --> DevF1
+    DevAPIM --> DevF2
+    DevAPIM --> DevF3
+    DevF1 --> DevPG
+    DevF1 --> DevRedis
+    DevF2 --> DevPG
+    DevF2 --> DevRedis
+    DevF3 -->|"Airbnb API"| ExtAirbnbDev["Airbnb Sandbox"]
+    DevF3 -->|"Booking.com API"| ExtBookingDev["Booking.com Sandbox"]
+
+    subgraph QAEnv["QA Environment — Azure via Terraform"]
+        QAAPIM["Azure API Management<br/>qa-api.hotel.com"]:::azureService
+        QAF1["Azure Function<br/>Reservation Manager"]:::lambda
+        QAF2["Azure Function<br/>Inventory Controller"]:::lambda
+        QAF3["Azure Function<br/>External Integration"]:::lambda
+        QAPG["Azure PostgreSQL<br/>Flexible Server — GP D2s_v3"]:::db
+        QARedis["Azure Cache for Redis<br/>Standard C1"]:::cache
+    end
+
+    QAAPIM --> QAF1
+    QAAPIM --> QAF2
+    QAAPIM --> QAF3
+    QAF1 --> QAPG
+    QAF1 --> QARedis
+    QAF2 --> QAPG
+    QAF2 --> QARedis
+
+    subgraph ProdEnv["Production Environment — Azure via Terraform"]
+        ProdAPIM["Azure API Management<br/>api.hotel.com"]:::azureService
+        ProdF1["Azure Function<br/>Reservation Manager"]:::lambda
+        ProdF2["Azure Function<br/>Inventory Controller"]:::lambda
+        ProdF3["Azure Function<br/>External Integration"]:::lambda
+        ProdPG["Azure PostgreSQL<br/>Flexible Server — GP D4s_v3<br/>HA Zone Redundant"]:::db
+        ProdRedis["Azure Cache for Redis<br/>Premium P1 — Clustering"]:::cache
+    end
+
+    ProdAPIM --> ProdF1
+    ProdAPIM --> ProdF2
+    ProdAPIM --> ProdF3
+    ProdF1 --> ProdPG
+    ProdF1 --> ProdRedis
+    ProdF2 --> ProdPG
+    ProdF2 --> ProdRedis
+    ProdF3 -->|"Airbnb API"| ExtAirbnbProd["Airbnb Production"]
+    ProdF3 -->|"Booking.com API"| ExtBookingProd["Booking.com Production"]
+
+    CFWorkers -->|"Proxy to Backend"| ProdAPIM
+
+    subgraph Observability["Centralized Observability — Azure"]
+        AzMonitor["Azure Monitor<br/>Centralized Logging<br/>Log Analytics Workspace"]:::obs
+        AppInsights["Application Insights<br/>APM — Transaction Tracing<br/>Live Metrics & Alerts"]:::obs
+    end
+
+    DevF1 -.->|"Logs"| AzMonitor
+    DevF2 -.->|"Logs"| AzMonitor
+    DevF3 -.->|"Logs"| AzMonitor
+    QAF1 -.->|"Logs"| AzMonitor
+    QAF2 -.->|"Logs"| AzMonitor
+    QAF3 -.->|"Logs"| AzMonitor
+    ProdF1 -.->|"Logs"| AzMonitor
+    ProdF2 -.->|"Logs"| AzMonitor
+    ProdF3 -.->|"Logs"| AzMonitor
+    ProdF1 -.->|"Telemetry"| AppInsights
+    ProdF2 -.->|"Telemetry"| AppInsights
+    ProdF3 -.->|"Telemetry"| AppInsights
+    QAF1 -.->|"Telemetry"| AppInsights
+    QAF2 -.->|"Telemetry"| AppInsights
+    DevF1 -.->|"Telemetry"| AppInsights
