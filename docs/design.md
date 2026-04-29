@@ -9,60 +9,60 @@ Este documento describe el diseño técnico para migrar CondoManager Pro desde A
 ```mermaid
 graph TB
     subgraph "Desarrolladores"
-        DEV[👨‍💻 Desarrollador]
+        DEV[Desarrollador]
     end
 
     subgraph "GitHub"
-        REPO[📦 Repositorio GitHub]
-        GHA_BE[⚙️ Pipeline Backend]
-        GHA_FE[⚙️ Pipeline Frontend]
+        REPO[Repositorio GitHub]
+        GHA_BE[Pipeline Backend]
+        GHA_FE[Pipeline Frontend]
     end
 
     subgraph "Docker Hub"
-        DH_BE[🐳 Imagen Backend<br/>condomanager-backend]
-        DH_FE[🐳 Imagen Frontend<br/>condomanager-frontend]
+        DH_BE[Imagen Backend<br/>condomanager-backend]
+        DH_FE[Imagen Frontend<br/>condomanager-frontend]
     end
 
     subgraph "AWS - Capa de Red y Entrada"
-        CF[☁️ CloudFront<br/>CDN Fotos]
-        APIGW_REST[🌐 API Gateway REST<br/>/{proxy+}]
-        APIGW_WS[🔌 API Gateway WebSocket<br/>$connect / $disconnect]
+        CF[CloudFront<br/>CDN Fotos]
+        APIGW_REST[API Gateway REST<br/>/{proxy+}]
+        APIGW_WS[API Gateway WebSocket<br/>$connect / $disconnect]
     end
 
     subgraph "AWS - Cómputo"
-        LAMBDA[⚡ Lambda Function<br/>Python 3.10 - Docker Image<br/>512MB / 30s]
+        LAMBDA[Lambda Function<br/>Python 3.10 - Docker Image<br/>512MB / 30s]
     end
 
     subgraph "AWS - Almacenamiento"
-        S3_PHOTOS[📸 S3 Bucket<br/>Fotos de Condominios]
-        SM[🔐 Secrets Manager<br/>JWT_Secret + Redis]
+        S3_PHOTOS[S3 Bucket<br/>Fotos de Condominios]
+        SM[Secrets Manager<br/>JWT_Secret + Redis]
     end
 
     subgraph "AWS - Base de Datos"
-        DDB_USERS[👤 Users]
-        DDB_CONDOS[🏢 Condos]
-        DDB_UNITS[🏠 Units]
-        DDB_RESIDENTS[👥 Residents]
-        DDB_FEES[💰 Fees]
-        DDB_INCIDENTS[🚨 Incidents]
-        DDB_MAINT[🔧 MaintenanceTasks]
-        DDB_ANN[📢 Announcements]
-        DDB_AMENITIES[🏊 Amenities]
-        DDB_AMENITY_RES[📅 AmenityReservations]
-        DDB_TOKENS[🔑 AdminTokens]
-        DDB_CONNS[🔗 Connections]
+        DDB_USERS[Users]
+        DDB_CONDOS[Condos]
+        DDB_UNITS[Units]
+        DDB_RESIDENTS[Residents]
+        DDB_FEES[Fees]
+        DDB_INCIDENTS[Incidents]
+        DDB_MAINT[MaintenanceTasks]
+        DDB_ANN[Announcements]
+        DDB_AMENITIES[Amenities]
+        DDB_AMENITY_RES[AmenityReservations]
+        DDB_TOKENS[AdminTokens]
+        DDB_CONNS[Connections]
     end
 
     subgraph "AWS - Observabilidad"
-        CW_LOGS[📋 CloudWatch Logs]
-        CW_DASH[📊 CloudWatch Dashboard]
-        CW_ALARMS[🚨 CloudWatch Alarms]
-        XRAY[🔍 X-Ray Tracing]
-        SNS[📧 SNS Notificaciones]
+        CW_LOGS[CloudWatch Logs]
+        CW_DASH[CloudWatch Dashboard]
+        CW_ALARMS[CloudWatch Alarms]
+        XRAY[X-Ray Tracing]
+        SNS[SNS Notificaciones]
     end
 
     subgraph "Externo"
-        REDIS[🔴 Redis / Upstash<br/>Cache]
+        REDIS[Redis / Upstash<br/>Cache]
     end
 
     DEV -->|PR + Merge| REPO
@@ -114,35 +114,35 @@ graph TB
 ```mermaid
 graph TB
     subgraph "Docker Hub Registry"
-        IMG_BE[🐳 condomanager-backend<br/>:sha-abc123 / :latest]
-        IMG_FE[🐳 condomanager-frontend<br/>:sha-abc123 / :latest]
+        IMG_BE[condomanager-backend<br/>:sha-abc123 / :latest]
+        IMG_FE[condomanager-frontend<br/>:sha-abc123 / :latest]
     end
 
     subgraph "Terraform State"
-        S3_STATE[📦 S3 Bucket<br/>condomanager-tf-state]
-        DDB_LOCK[🔒 DynamoDB<br/>terraform-locks]
+        S3_STATE[S3 Bucket<br/>condomanager-tf-state]
+        DDB_LOCK[DynamoDB<br/>terraform-locks]
     end
 
     subgraph "Ambiente Dev (us-east-2)"
-        DEV_LAMBDA[⚡ dev-CondoManager<br/>Lambda 256MB / 15s]
-        DEV_APIGW[🌐 dev-API Gateway REST]
-        DEV_APIGW_WS[🔌 dev-API Gateway WS]
-        DEV_DDB[🗄️ dev-* DynamoDB Tables<br/>PAY_PER_REQUEST]
-        DEV_S3[📸 dev-S3 Photos]
-        DEV_CF[☁️ dev-CloudFront]
-        DEV_CW[📋 CloudWatch Logs<br/>Retención: 14 días]
-        DEV_SM[🔐 dev-Secrets Manager]
+        DEV_LAMBDA[dev-CondoManager<br/>Lambda 256MB / 15s]
+        DEV_APIGW[dev-API Gateway REST]
+        DEV_APIGW_WS[dev-API Gateway WS]
+        DEV_DDB[dev-* DynamoDB Tables<br/>PAY_PER_REQUEST]
+        DEV_S3[dev-S3 Photos]
+        DEV_CF[dev-CloudFront]
+        DEV_CW[CloudWatch Logs<br/>Retención: 14 días]
+        DEV_SM[dev-Secrets Manager]
     end
 
     subgraph "Ambiente Prod (us-east-2)"
-        PROD_LAMBDA[⚡ prod-CondoManager<br/>Lambda 512MB / 30s]
-        PROD_APIGW[🌐 prod-API Gateway REST]
-        PROD_APIGW_WS[🔌 prod-API Gateway WS]
-        PROD_DDB[🗄️ prod-* DynamoDB Tables<br/>PAY_PER_REQUEST]
-        PROD_S3[📸 prod-S3 Photos]
-        PROD_CF[☁️ prod-CloudFront]
-        PROD_CW[📋 CloudWatch Logs<br/>Retención: 90 días]
-        PROD_SM[🔐 prod-Secrets Manager]
+        PROD_LAMBDA[prod-CondoManager<br/>Lambda 512MB / 30s]
+        PROD_APIGW[prod-API Gateway REST]
+        PROD_APIGW_WS[prod-API Gateway WS]
+        PROD_DDB[prod-* DynamoDB Tables<br/>PAY_PER_REQUEST]
+        PROD_S3[prod-S3 Photos]
+        PROD_CF[prod-CloudFront]
+        PROD_CW[CloudWatch Logs<br/>Retención: 90 días]
+        PROD_SM[prod-Secrets Manager]
     end
 
     IMG_BE -->|terraform apply<br/>workspace: dev| DEV_LAMBDA
@@ -177,30 +177,30 @@ flowchart LR
 
     subgraph "Pipeline Backend"
         direction LR
-        BE_BUILD[🔨 Build<br/>pip install]
-        BE_TEST[🧪 Unit Tests<br/>pytest + coverage]
-        BE_DOCKER[🐳 Docker Build<br/>backend image]
-        BE_PUSH[📤 Push Docker Hub<br/>:sha-commit]
-        BE_DEV[🚀 Deploy Dev<br/>terraform apply<br/>workspace: dev]
-        BE_GATE[🔒 Aprobación<br/>Manual]
-        BE_PROD[🚀 Deploy Prod<br/>terraform apply<br/>workspace: prod<br/>+ tag :latest]
+        BE_BUILD[Build<br/>pip install]
+        BE_TEST[Unit Tests<br/>pytest + coverage]
+        BE_DOCKER[Docker Build<br/>backend image]
+        BE_PUSH[Push Docker Hub<br/>:sha-commit]
+        BE_DEV[Deploy Dev<br/>terraform apply<br/>workspace: dev]
+        BE_GATE[Aprobacion<br/>Manual]
+        BE_PROD[Deploy Prod<br/>terraform apply<br/>workspace: prod<br/>+ tag :latest]
     end
 
     subgraph "Pipeline Frontend"
         direction LR
-        FE_DOCKER[🐳 Docker Build<br/>frontend image]
-        FE_PUSH[📤 Push Docker Hub<br/>:sha-commit]
-        FE_DEV[🚀 Deploy Dev<br/>S3 sync + CF invalidate]
-        FE_GATE[🔒 Aprobación<br/>Manual]
-        FE_PROD[🚀 Deploy Prod<br/>S3 sync + CF invalidate<br/>+ tag :latest]
+        FE_DOCKER[Docker Build<br/>frontend image]
+        FE_PUSH[Push Docker Hub<br/>:sha-commit]
+        FE_DEV[Deploy Dev<br/>S3 sync + CF invalidate]
+        FE_GATE[Aprobacion<br/>Manual]
+        FE_PROD[Deploy Prod<br/>S3 sync + CF invalidate<br/>+ tag :latest]
     end
 
     PR --> BE_BUILD --> BE_TEST --> BE_DOCKER --> BE_PUSH --> BE_DEV --> BE_GATE --> BE_PROD
     PR --> FE_DOCKER --> FE_PUSH --> FE_DEV --> FE_GATE --> FE_PROD
 
-    BE_TEST -->|❌ Falla| STOP_BE[🛑 Pipeline Detenido]
-    BE_DEV -->|❌ Falla| STOP_BE2[🛑 Sin Aprobación]
-    FE_DEV -->|❌ Falla| STOP_FE[🛑 Sin Aprobación]
+    BE_TEST -->|Falla| STOP_BE[Pipeline Detenido]
+    BE_DEV -->|Falla| STOP_BE2[Sin Aprobacion]
+    FE_DEV -->|Falla| STOP_FE[Sin Aprobacion]
 ```
 
 ### Diagrama de Estrategia de Ramas
@@ -213,18 +213,18 @@ gitGraph
     commit id: "fix auth logic"
     commit id: "add tests"
     checkout main
-    merge feature/auth-fix id: "PR #1 ✅" tag: "deploy"
+    merge feature/auth-fix id: "PR #1" tag: "deploy"
     branch feature/amenities-v2
     checkout feature/amenities-v2
     commit id: "new amenity flow"
     commit id: "update UI"
     checkout main
-    merge feature/amenities-v2 id: "PR #2 ✅" tag: "deploy"
+    merge feature/amenities-v2 id: "PR #2" tag: "deploy"
     branch hotfix/fee-calc
     checkout hotfix/fee-calc
     commit id: "fix decimal calc"
     checkout main
-    merge hotfix/fee-calc id: "PR #3 ✅" tag: "deploy"
+    merge hotfix/fee-calc id: "PR #3" tag: "deploy"
 ```
 
 **Flujo de ramas:**
@@ -238,47 +238,47 @@ gitGraph
 ```mermaid
 graph TB
     subgraph "terraform/"
-        MAIN[📄 main.tf<br/>Provider + Backend]
-        VARS[📄 variables.tf<br/>Variables globales]
-        OUTPUTS[📄 outputs.tf<br/>URLs y ARNs]
-        DEV_TFVARS[📄 environments/dev.tfvars]
-        PROD_TFVARS[📄 environments/prod.tfvars]
+        MAIN[main.tf<br/>Provider + Backend]
+        VARS[variables.tf<br/>Variables globales]
+        OUTPUTS[outputs.tf<br/>URLs y ARNs]
+        DEV_TFVARS[environments/dev.tfvars]
+        PROD_TFVARS[environments/prod.tfvars]
     end
 
     subgraph "modules/dynamodb"
-        DDB_MAIN[📄 main.tf<br/>12 tablas + GSIs]
-        DDB_VARS[📄 variables.tf]
-        DDB_OUT[📄 outputs.tf]
+        DDB_MAIN[main.tf<br/>12 tablas + GSIs]
+        DDB_VARS[variables.tf]
+        DDB_OUT[outputs.tf]
     end
 
     subgraph "modules/lambda"
-        LBD_MAIN[📄 main.tf<br/>Function + IAM Role]
-        LBD_VARS[📄 variables.tf]
-        LBD_OUT[📄 outputs.tf]
+        LBD_MAIN[main.tf<br/>Function + IAM Role]
+        LBD_VARS[variables.tf]
+        LBD_OUT[outputs.tf]
     end
 
     subgraph "modules/api-gateway"
-        API_MAIN[📄 main.tf<br/>REST API + WebSocket]
-        API_VARS[📄 variables.tf]
-        API_OUT[📄 outputs.tf]
+        API_MAIN[main.tf<br/>REST API + WebSocket]
+        API_VARS[variables.tf]
+        API_OUT[outputs.tf]
     end
 
     subgraph "modules/storage"
-        S3_MAIN[📄 main.tf<br/>S3 + CloudFront]
-        S3_VARS[📄 variables.tf]
-        S3_OUT[📄 outputs.tf]
+        S3_MAIN[main.tf<br/>S3 + CloudFront]
+        S3_VARS[variables.tf]
+        S3_OUT[outputs.tf]
     end
 
     subgraph "modules/observability"
-        OBS_MAIN[📄 main.tf<br/>CloudWatch + X-Ray + SNS]
-        OBS_VARS[📄 variables.tf]
-        OBS_OUT[📄 outputs.tf]
+        OBS_MAIN[main.tf<br/>CloudWatch + X-Ray + SNS]
+        OBS_VARS[variables.tf]
+        OBS_OUT[outputs.tf]
     end
 
     subgraph "modules/secrets"
-        SEC_MAIN[📄 main.tf<br/>Secrets Manager]
-        SEC_VARS[📄 variables.tf]
-        SEC_OUT[📄 outputs.tf]
+        SEC_MAIN[main.tf<br/>Secrets Manager]
+        SEC_VARS[variables.tf]
+        SEC_OUT[outputs.tf]
     end
 
     MAIN -->|module.dynamodb| DDB_MAIN
@@ -772,38 +772,38 @@ Después de desplegar a Dev, se pueden ejecutar smoke tests contra los endpoints
 ```mermaid
 graph TB
     subgraph "Fuentes de Datos"
-        LAMBDA[⚡ Lambda Function]
-        APIGW[🌐 API Gateway]
+        LAMBDA[Lambda Function]
+        APIGW[API Gateway]
     end
 
     subgraph "CloudWatch Logs"
-        LG_LAMBDA[📋 /aws/lambda/{env}-CondoManager<br/>Retención: 14d Dev / 90d Prod]
-        LG_APIGW[📋 /aws/apigateway/{env}-rest-api]
+        LG_LAMBDA[/aws/lambda/{env}-CondoManager<br/>Retención: 14d Dev / 90d Prod]
+        LG_APIGW[/aws/apigateway/{env}-rest-api]
     end
 
     subgraph "CloudWatch Metrics & Alarms"
-        M_INVOCATIONS[📈 Invocations]
-        M_DURATION[📈 Duration]
-        M_ERRORS[📈 Errors]
-        M_THROTTLES[📈 Throttles]
-        M_4XX[📈 4xx Count]
-        M_5XX[📈 5xx Count]
-        M_LATENCY[📈 Latency]
-        A_ERRORS[🚨 Alarm: Lambda Errors > 0<br/>Period: 5 min]
-        A_DURATION[🚨 Alarm: Duration > 80%<br/>del timeout]
+        M_INVOCATIONS[Invocations]
+        M_DURATION[Duration]
+        M_ERRORS[Errors]
+        M_THROTTLES[Throttles]
+        M_4XX[4xx Count]
+        M_5XX[5xx Count]
+        M_LATENCY[Latency]
+        A_ERRORS[Alarm: Lambda Errors > 0<br/>Period: 5 min]
+        A_DURATION[Alarm: Duration > 80%<br/>del timeout]
     end
 
     subgraph "Dashboard CloudWatch"
-        DASH[📊 CondoManager-{env}-Dashboard<br/>• Invocaciones por minuto<br/>• Duración P50/P90/P99<br/>• Tasa de errores<br/>• Throttles<br/>• API Gateway 4xx/5xx<br/>• API Gateway Latencia]
+        DASH[CondoManager-{env}-Dashboard<br/>• Invocaciones por minuto<br/>• Duración P50/P90/P99<br/>• Tasa de errores<br/>• Throttles<br/>• API Gateway 4xx/5xx<br/>• API Gateway Latencia]
     end
 
     subgraph "X-Ray"
-        XRAY_TRACE[🔍 Traces<br/>Lambda + API Gateway<br/>Service Map]
+        XRAY_TRACE[Traces<br/>Lambda + API Gateway<br/>Service Map]
     end
 
     subgraph "Notificaciones"
-        SNS_TOPIC[📧 SNS Topic<br/>{env}-condomanager-alarms]
-        EMAIL[📬 Email del equipo]
+        SNS_TOPIC[SNS Topic<br/>{env}-condomanager-alarms]
+        EMAIL[Email del equipo]
     end
 
     LAMBDA --> LG_LAMBDA
