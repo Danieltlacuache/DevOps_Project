@@ -1,0 +1,292 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: CondoManager Pro
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.10
+    Tracing: Active
+    Environment:
+      Variables:
+        USERS_TABLE: !Ref UsersTable
+        RESIDENTS_TABLE: !Ref ResidentsTable
+        CONDOS_TABLE: !Ref CondosTable
+        UNITS_TABLE: !Ref UnitsTable
+        ADMIN_TOKENS_TABLE: !Ref AdminTokensTable
+        CONNECTIONS_TABLE: !Ref ConnectionsTable
+        MAINTENANCE_TASKS_TABLE: !Ref MaintenanceTasksTable
+        ANNOUNCEMENTS_TABLE: !Ref AnnouncementsTable
+        INCIDENTS_TABLE: !Ref IncidentsTable
+        FEES_TABLE: !Ref FeesTable
+        AMENITIES_TABLE: !Ref AmenitiesTable
+        AMENITY_RESERVATIONS_TABLE: !Ref AmenityResTable
+        PHOTOS_BUCKET: !Ref CondoPhotosBucket
+        SECRET_ID: "CondoManager/JWT_Secret"
+        WEBSOCKET_URL: !Sub "https://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+        CDN_DOMAIN: !GetAtt CondoCloudFrontDistribution.DomainName
+
+Resources:
+  CondoRestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      TracingEnabled: true
+      Cors:
+        AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+  CondoManagerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda_function.lambda_handler
+      Policies:
+        - AWSLambdaVPCAccessExecutionRole
+        - AmazonDynamoDBFullAccess
+        - AmazonS3FullAccess
+        - SecretsManagerReadWrite
+        - AmazonAPIGatewayInvokeFullAccess
+        - "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+      Events:
+        CondoApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CondoRestApi
+            Path: /{proxy+}
+            Method: ANY
+
+  # ==============================================================================
+  # TABLAS CON NOMBRES FIJOS (SIN IDENTIFICADORES ALEATORIOS)
+  # ==============================================================================
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Users"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "email", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "email", KeyType: "HASH"}]
+
+  AdminTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "AdminTokens"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "token", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "token", KeyType: "HASH"}]
+
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Connections"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "connectionId", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "connectionId", KeyType: "HASH"}]
+
+  AnnouncementsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Announcements"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "id", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+
+  AmenitiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Amenities"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: "id", AttributeType: "S"}]
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+
+  # TABLAS DE ALTO RENDIMIENTO CON GSIs
+  CondosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Condos"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "popularidad"
+          AttributeType: "N"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "PopularityIndex"
+          KeySchema: [{AttributeName: "popularidad", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  UnitsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Units"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "condo_id"
+          AttributeType: "S"
+        - AttributeName: "estado"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "CondoIndex"
+          KeySchema: [{AttributeName: "condo_id", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+        - IndexName: "EstadoIndex"
+          KeySchema: [{AttributeName: "estado", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  ResidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Residents"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "EmailIndex"
+          KeySchema: [{AttributeName: "email", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  FeesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Fees"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "EmailIndex"
+          KeySchema: [{AttributeName: "email", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  IncidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "Incidents"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "residente"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "ResidenteIndex"
+          KeySchema: [{AttributeName: "residente", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  MaintenanceTasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "MaintenanceTasks"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "assigned_to"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "AssignedToIndex"
+          KeySchema: [{AttributeName: "assigned_to", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  AmenityResTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "AmenityReservations"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "amenity_id"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema: [{AttributeName: "id", KeyType: "HASH"}]
+      GlobalSecondaryIndexes:
+        - IndexName: "AmenityIndex"
+          KeySchema: [{AttributeName: "amenity_id", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+        - IndexName: "EmailIndex"
+          KeySchema: [{AttributeName: "email", KeyType: "HASH"}]
+          Projection: {ProjectionType: "ALL"}
+
+  # ==============================================================================
+  # S3, CLOUDFRONT Y WEBSOCKETS (IGUAL QUE ANTES)
+  # ==============================================================================
+  CondoPhotosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration: {BlockPublicAcls: false, BlockPublicPolicy: false, IgnorePublicAcls: false, RestrictPublicBuckets: false}
+      CorsConfiguration:
+        CorsRules: [{AllowedHeaders: ['*'], AllowedMethods: [GET, PUT, POST, DELETE], AllowedOrigins: ['*']}]
+
+  CondoPhotosBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CondoPhotosBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{Effect: Allow, Principal: "*", Action: "s3:GetObject", Resource: !Sub "arn:aws:s3:::${CondoPhotosBucket}/*"}]
+
+  CondoCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - DomainName: !GetAtt CondoPhotosBucket.RegionalDomainName
+            Id: S3Origin
+            S3OriginConfig: {OriginAccessIdentity: ""}
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          ForwardedValues: {QueryString: false, Cookies: {Forward: none}}
+
+  CondoWebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties: {Name: CondoWebSocketApi, ProtocolType: WEBSOCKET, RouteSelectionExpression: "$request.body.action"}
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties: {ApiId: !Ref CondoWebSocketApi, RouteKey: $connect, Target: !Join ['/', ['integrations', !Ref WebSocketIntegration]]}
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties: {ApiId: !Ref CondoWebSocketApi, RouteKey: $disconnect, Target: !Join ['/', ['integrations', !Ref WebSocketIntegration]]}
+
+  WebSocketIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties: {ApiId: !Ref CondoWebSocketApi, IntegrationType: AWS_PROXY, IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CondoManagerFunction.Arn}/invocations"}
+
+  WebSocketDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn: [ConnectRoute, DisconnectRoute]
+    Properties: {ApiId: !Ref CondoWebSocketApi}
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties: {StageName: Prod, DeploymentId: !Ref WebSocketDeployment, ApiId: !Ref CondoWebSocketApi}
+
+  CondoFunctionWSAllow:
+    Type: AWS::Lambda::Permission
+    Properties: {Action: lambda:InvokeFunction, FunctionName: !Ref CondoManagerFunction, Principal: apigateway.amazonaws.com}
+
+Outputs:
+  ApiUrl: {Value: !Sub "https://${CondoRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"}
+  WebSocketUrl: {Value: !Sub "wss://${CondoWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"}
+  CDNUrl: {Value: !GetAtt CondoCloudFrontDistribution.DomainName}
