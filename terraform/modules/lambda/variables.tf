@@ -24,8 +24,8 @@ variable "image_tag" {
   type        = string
 }
 
-variable "dockerhub_username" {
-  description = "Docker Hub username for the image registry"
+variable "ecr_repository_url" {
+  description = "ECR repository URL for the Lambda container image"
   type        = string
 }
 
@@ -133,5 +133,15 @@ variable "bucket_arn" {
 
 variable "secret_arn" {
   description = "ARN of the secret in Secrets Manager"
+  type        = string
+}
+
+variable "team_tag" {
+  description = "Team tag required by AWS organization SCP"
+  type        = string
+}
+
+variable "name_tag" {
+  description = "Name tag (email) required by AWS organization SCP"
   type        = string
 }

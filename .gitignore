@@ -9,3 +9,5 @@ __pycache__/
 *.zip
 *.log
 *.env
+
+docs/infrastructure-guide.md

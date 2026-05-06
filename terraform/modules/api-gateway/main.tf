@@ -16,6 +16,8 @@ resource "aws_api_gateway_rest_api" "this" {
   description = "REST API for CondoManager Pro (${var.environment})"
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "api-gateway"
   }
@@ -132,6 +134,8 @@ resource "aws_api_gateway_stage" "this" {
   xray_tracing_enabled = true
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "api-gateway"
   }
@@ -157,6 +161,8 @@ resource "aws_apigatewayv2_api" "websocket" {
   route_selection_expression = "$request.body.action"
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "api-gateway"
   }
@@ -214,6 +220,8 @@ resource "aws_apigatewayv2_stage" "websocket" {
   deployment_id = aws_apigatewayv2_deployment.websocket.id
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "api-gateway"
   }

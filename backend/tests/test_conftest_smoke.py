@@ -26,7 +26,7 @@ def test_get_auth_token_produces_valid_jwt(get_auth_token):
     """get_auth_token should return a decodable JWT string."""
     import jwt
     token = get_auth_token('user@test.com', 'residente')
-    payload = jwt.decode(token, 'test-secret-key', algorithms=['HS256'])
+    payload = jwt.decode(token, 'test_secret_key_for_testing', algorithms=['HS256'])
     assert payload['email'] == 'user@test.com'
     assert payload['role'] == 'residente'
 

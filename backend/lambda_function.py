@@ -18,14 +18,15 @@ from decimal import Decimal
 from datetime import datetime as dt, timedelta
 
 S3_CONFIG = Config(s3={'addressing_style': 'virtual'}, signature_version='s3v4')
-dynamodb  = boto3.resource('dynamodb', region_name='us-east-2')
-s3_client = boto3.client('s3', region_name='us-east-2', config=S3_CONFIG)
+REGION = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
+dynamodb  = boto3.resource('dynamodb', region_name=REGION)
+s3_client = boto3.client('s3', region_name=REGION, config=S3_CONFIG)
 
 # ==============================================================================
 # SECRETOS Y REDIS (UPSTASH)
 # ==============================================================================
 def get_system_secrets():
-    client = boto3.client('secretsmanager', region_name='us-east-2')
+    client = boto3.client('secretsmanager', region_name=REGION)
     try:
         res = client.get_secret_value(SecretId=os.environ.get('SECRET_ID', 'CondoManager/JWT_Secret'))
         return json.loads(res['SecretString'])
@@ -57,7 +58,7 @@ AMENITIES_TABLE   = dynamodb.Table(os.environ.get('AMENITIES_TABLE', 'Amenities'
 AMENITY_RES_TABLE = dynamodb.Table(os.environ.get('AMENITY_RESERVATIONS_TABLE', 'AmenityReservations'))
 
 BUCKET_NAME       = os.environ.get('PHOTOS_BUCKET', '')
-CDN_DOMAIN        = os.environ.get('CDN_DOMAIN', f"{BUCKET_NAME}.s3.us-east-2.amazonaws.com")
+CDN_DOMAIN        = os.environ.get('CDN_DOMAIN', f"{BUCKET_NAME}.s3.{REGION}.amazonaws.com")
 
 WS_ENDPOINT = os.environ.get('WEBSOCKET_URL', '').replace('wss://', 'https://')
 try:
