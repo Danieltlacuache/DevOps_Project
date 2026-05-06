@@ -25,6 +25,8 @@ resource "aws_iam_role" "lambda" {
   })
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "lambda"
   }
@@ -107,7 +109,7 @@ resource "aws_lambda_function" "this" {
   function_name = "${var.environment}-CondoManager"
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
-  image_uri     = "${var.dockerhub_username}/condomanager-backend:${var.image_tag}"
+  image_uri     = "${var.ecr_repository_url}:${var.image_tag}"
   memory_size   = var.memory_size
   timeout       = var.timeout
 
@@ -137,6 +139,8 @@ resource "aws_lambda_function" "this" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "lambda"
   }
@@ -149,6 +153,8 @@ resource "aws_cloudwatch_log_group" "lambda" {
   retention_in_days = var.log_retention_days
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "lambda"
   }

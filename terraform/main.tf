@@ -21,12 +21,18 @@ terraform {
     }
   }
 
-  backend "s3" {
-    bucket         = "condomanager-tf-state"
-    key            = "infrastructure/terraform.tfstate"
-    region         = "us-east-2"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+  # Backend S3 (uncomment for production use with remote state):
+  # backend "s3" {
+  #   bucket         = "condomanager-tf-state"
+  #   key            = "infrastructure/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   dynamodb_table = "terraform-locks"
+  #   encrypt        = true
+  # }
+
+  # Using local backend for initial deployment
+  backend "local" {
+    path = "terraform.tfstate"
   }
 }
 
@@ -45,6 +51,8 @@ provider "aws" {
 module "dynamodb" {
   source      = "./modules/dynamodb"
   environment = var.environment
+  team_tag    = var.team_tag
+  name_tag    = var.name_tag
 }
 
 # -----------------------------------------------------------------------------
@@ -54,6 +62,8 @@ module "dynamodb" {
 module "secrets" {
   source      = "./modules/secrets"
   environment = var.environment
+  team_tag    = var.team_tag
+  name_tag    = var.name_tag
 }
 
 # -----------------------------------------------------------------------------
@@ -63,6 +73,8 @@ module "secrets" {
 module "storage" {
   source      = "./modules/storage"
   environment = var.environment
+  team_tag    = var.team_tag
+  name_tag    = var.name_tag
 }
 
 # -----------------------------------------------------------------------------
@@ -81,10 +93,12 @@ module "lambda" {
   source = "./modules/lambda"
 
   environment        = var.environment
+  team_tag           = var.team_tag
+  name_tag           = var.name_tag
   memory_size        = var.lambda_memory_size
   timeout            = var.lambda_timeout
   image_tag          = var.image_tag
-  dockerhub_username = var.dockerhub_username
+  ecr_repository_url = var.ecr_repository_url
   log_retention_days = var.log_retention_days
 
   # DynamoDB table names (12 tables)
@@ -126,6 +140,8 @@ module "api_gateway" {
   source = "./modules/api-gateway"
 
   environment          = var.environment
+  team_tag             = var.team_tag
+  name_tag             = var.name_tag
   lambda_invoke_arn    = module.lambda.invoke_arn
   lambda_function_name = module.lambda.function_name
   lambda_function_arn  = module.lambda.function_arn
@@ -139,6 +155,8 @@ module "observability" {
   source = "./modules/observability"
 
   environment          = var.environment
+  team_tag             = var.team_tag
+  name_tag             = var.name_tag
   log_retention_days   = var.log_retention_days
   lambda_function_name = module.lambda.function_name
   rest_api_id          = module.api_gateway.rest_api_id

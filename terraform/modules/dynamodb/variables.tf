@@ -8,3 +8,13 @@ variable "billing_mode" {
   type        = string
   default     = "PAY_PER_REQUEST"
 }
+
+variable "team_tag" {
+  description = "Team tag required by AWS organization SCP"
+  type        = string
+}
+
+variable "name_tag" {
+  description = "Name tag (email) required by AWS organization SCP"
+  type        = string
+}

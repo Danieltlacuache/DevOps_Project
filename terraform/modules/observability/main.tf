@@ -11,6 +11,8 @@ resource "aws_sns_topic" "alarms" {
   name = "${var.environment}-condomanager-alarms"
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "observability"
   }
@@ -46,6 +48,8 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   alarm_actions = [aws_sns_topic.alarms.arn]
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "observability"
   }
@@ -73,6 +77,8 @@ resource "aws_cloudwatch_metric_alarm" "lambda_duration" {
   alarm_actions = [aws_sns_topic.alarms.arn]
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "observability"
   }
@@ -226,6 +232,8 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
   retention_in_days = var.log_retention_days
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "observability"
   }

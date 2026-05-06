@@ -17,6 +17,8 @@ resource "aws_dynamodb_table" "users" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -34,6 +36,8 @@ resource "aws_dynamodb_table" "admin_tokens" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -51,6 +55,8 @@ resource "aws_dynamodb_table" "connections" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -68,6 +74,8 @@ resource "aws_dynamodb_table" "announcements" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -85,6 +93,8 @@ resource "aws_dynamodb_table" "amenities" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -115,6 +125,8 @@ resource "aws_dynamodb_table" "condos" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -154,6 +166,8 @@ resource "aws_dynamodb_table" "units" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -182,6 +196,8 @@ resource "aws_dynamodb_table" "residents" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -210,6 +226,8 @@ resource "aws_dynamodb_table" "fees" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -238,6 +256,8 @@ resource "aws_dynamodb_table" "incidents" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -266,6 +286,8 @@ resource "aws_dynamodb_table" "maintenance_tasks" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }
@@ -305,6 +327,8 @@ resource "aws_dynamodb_table" "amenity_reservations" {
   }
 
   tags = {
+    Team        = var.team_tag
+    Name        = var.name_tag
     Environment = var.environment
     Module      = "dynamodb"
   }

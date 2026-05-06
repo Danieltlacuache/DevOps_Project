@@ -1,0 +1,79 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths: ['frontend/**']
+  pull_request:
+    branches: [main]
+    paths: ['frontend/**']
+
+jobs:
+  docker-build-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/condomanager-frontend:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/condomanager-frontend:latest
+
+  deploy-dev:
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Inject Dev API URL into config.js
+        run: |
+          sed -i "s|AWS_API_URL:.*|AWS_API_URL: \"${{ vars.DEV_API_URL }}\",|" frontend/config.js
+      - name: Deploy to S3 and invalidate CloudFront
+        run: |
+          aws s3 sync frontend/ s3://${{ vars.DEV_FRONTEND_BUCKET }}/ \
+            --exclude "Dockerfile" \
+            --exclude "nginx.conf" \
+            --exclude "docker-entrypoint.sh" \
+            --exclude ".dockerignore"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.DEV_CF_DISTRIBUTION_ID }} \
+            --paths "/*"
+
+  deploy-prod:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Inject Prod API URL into config.js
+        run: |
+          sed -i "s|AWS_API_URL:.*|AWS_API_URL: \"${{ vars.PROD_API_URL }}\",|" frontend/config.js
+      - name: Deploy to S3 and invalidate CloudFront
+        run: |
+          aws s3 sync frontend/ s3://${{ vars.PROD_FRONTEND_BUCKET }}/ \
+            --exclude "Dockerfile" \
+            --exclude "nginx.conf" \
+            --exclude "docker-entrypoint.sh" \
+            --exclude ".dockerignore"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.PROD_CF_DISTRIBUTION_ID }} \
+            --paths "/*"

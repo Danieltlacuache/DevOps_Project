@@ -14,7 +14,7 @@ from moto import mock_aws
 #    The module reads env vars and creates DynamoDB table references at
 #    import time, so these must be present first.
 # ---------------------------------------------------------------------------
-os.environ['AWS_DEFAULT_REGION'] = 'us-east-2'
+os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
 os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
 os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
 
@@ -33,7 +33,7 @@ os.environ['AMENITIES_TABLE'] = 'Amenities'
 os.environ['AMENITY_RESERVATIONS_TABLE'] = 'AmenityReservations'
 
 # Other env vars
-os.environ['PHOTOS_BUCKET'] = 'test-photos'
+os.environ['PHOTOS_BUCKET'] = 'test-photos-bucket'
 os.environ['SECRET_ID'] = 'CondoManager/JWT_Secret'
 os.environ['CDN_DOMAIN'] = 'test.cloudfront.net'
 os.environ['WEBSOCKET_URL'] = ''
@@ -44,15 +44,15 @@ _backend_dir = os.path.join(os.path.dirname(__file__), '..')
 if _backend_dir not in sys.path:
     sys.path.insert(0, os.path.abspath(_backend_dir))
 
-REGION = 'us-east-2'
-JWT_TEST_SECRET = 'test-secret-key'
+REGION = 'us-east-1'
+JWT_TEST_SECRET = 'test_secret_key_for_testing'
 
 
 # ---------------------------------------------------------------------------
 # 2. Helper: create all 12 DynamoDB tables with their GSIs
 # ---------------------------------------------------------------------------
 def _create_dynamodb_tables(dynamodb):
-    """Create all 12 DynamoDB tables matching the SAM template."""
+    """Create all 12 DynamoDB tables matching the design specification."""
 
     # --- Simple tables (PK only, no GSIs) ---
     simple_tables = [
@@ -200,16 +200,19 @@ def _create_dynamodb_tables(dynamodb):
 
 
 # ---------------------------------------------------------------------------
-# 3. Main fixture: spin up moto mocks, create resources, import module
+# 3. Main autouse fixture: spin up moto mocks for every test automatically
 # ---------------------------------------------------------------------------
-@pytest.fixture(scope='function')
+@pytest.fixture(autouse=True)
 def aws_mocks():
     """Provide a fully-mocked AWS environment and a freshly-imported
     ``lambda_function`` module.
 
-    Every test gets its own mock context so table data never leaks between
-    tests.  The module is reloaded inside the mock so that its module-level
-    boto3 resources point at the moto fakes.
+    This fixture is ``autouse=True`` so that every test automatically runs
+    inside a moto mock context.  Each test gets its own mock context so
+    table data never leaks between tests.
+
+    The module is reloaded inside the mock so that its module-level boto3
+    resources point at the moto fakes.
     """
     with mock_aws():
         # -- DynamoDB tables --
@@ -218,10 +221,14 @@ def aws_mocks():
 
         # -- S3 bucket --
         s3 = boto3.client('s3', region_name=REGION)
-        s3.create_bucket(
-            Bucket='test-photos',
-            CreateBucketConfiguration={'LocationConstraint': REGION},
-        )
+        # us-east-1 does not accept LocationConstraint (AWS quirk)
+        if REGION == 'us-east-1':
+            s3.create_bucket(Bucket='test-photos-bucket')
+        else:
+            s3.create_bucket(
+                Bucket='test-photos-bucket',
+                CreateBucketConfiguration={'LocationConstraint': REGION},
+            )
 
         # -- Secrets Manager secret --
         sm = boto3.client('secretsmanager', region_name=REGION)
@@ -231,6 +238,8 @@ def aws_mocks():
         )
 
         # -- Import / reload lambda_function inside the mock context --
+        # This is critical because lambda_function.py runs code at import
+        # time that connects to AWS services (DynamoDB, S3, Secrets Manager).
         import lambda_function
         importlib.reload(lambda_function)
 

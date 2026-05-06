@@ -39,3 +39,13 @@ variable "sns_email" {
   type        = string
   default     = ""
 }
+
+variable "team_tag" {
+  description = "Team tag required by AWS organization SCP"
+  type        = string
+}
+
+variable "name_tag" {
+  description = "Name tag (email) required by AWS organization SCP"
+  type        = string
+}

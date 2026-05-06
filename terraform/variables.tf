@@ -15,7 +15,19 @@ variable "environment" {
 variable "aws_region" {
   description = "AWS region where all resources will be created"
   type        = string
-  default     = "us-east-2"
+  default     = "us-east-1"
+}
+
+variable "team_tag" {
+  description = "Team tag required by AWS organization policy"
+  type        = string
+  default     = "team-7"
+}
+
+variable "name_tag" {
+  description = "Name tag (ITESO email) required by AWS organization policy"
+  type        = string
+  default     = "daniel.guzman@iteso.mx"
 }
 
 variable "lambda_memory_size" {
@@ -41,9 +53,10 @@ variable "image_tag" {
   type        = string
 }
 
-variable "dockerhub_username" {
-  description = "Docker Hub username for the image registry"
+variable "ecr_repository_url" {
+  description = "ECR repository URL for the Lambda container image"
   type        = string
+  default     = "311141527383.dkr.ecr.us-east-1.amazonaws.com/condomanager-backend"
 }
 
 variable "sns_email" {
