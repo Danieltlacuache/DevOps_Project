@@ -64,3 +64,15 @@ variable "sns_email" {
   type        = string
   default     = ""
 }
+
+variable "photos_bucket_name" {
+  description = "Name of the pre-created S3 photos bucket"
+  type        = string
+  default     = "dev-condomanager-photos-team7"
+}
+
+variable "frontend_bucket_name" {
+  description = "Name of the pre-created S3 frontend bucket"
+  type        = string
+  default     = "dev-condomanager-frontend-team7"
+}
